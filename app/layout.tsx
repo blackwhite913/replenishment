@@ -7,7 +7,7 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Replenishment Control Dashboard',
+  title: 'NAB Replenishment Dashboard',
   description: 'Monitor inventory and identify SKUs that need replenishment from 3PL to Shop based on lead time and stock coverage.',
   generator: 'v0.app',
   icons: {

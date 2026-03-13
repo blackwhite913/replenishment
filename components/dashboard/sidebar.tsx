@@ -1,5 +1,7 @@
 "use client"
 
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   Package,
@@ -19,12 +21,12 @@ import {
 } from "@/components/ui/tooltip"
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Overview", active: true },
-  { icon: Package, label: "Inventory" },
-  { icon: TrendingUp, label: "Forecasting" },
-  { icon: Truck, label: "Transfers" },
-  { icon: BarChart3, label: "Reports" },
-  { icon: Bell, label: "Alerts" },
+  { icon: LayoutDashboard, label: "Overview", href: "/", pathMatch: "/" },
+  { icon: Package, label: "Inventory", href: "/", pathMatch: "/inventory" },
+  { icon: TrendingUp, label: "Forecasting", href: "/forecasting", pathMatch: "/forecasting" },
+  { icon: Truck, label: "Transfers", href: "/", pathMatch: "/transfers" },
+  { icon: BarChart3, label: "Reports", href: "/", pathMatch: "/reports" },
+  { icon: Bell, label: "Alerts", href: "/", pathMatch: "/alerts" },
 ]
 
 const bottomItems = [
@@ -33,6 +35,7 @@ const bottomItems = [
 ]
 
 export function Sidebar() {
+  const pathname = usePathname()
   return (
     <aside className="hidden lg:flex flex-col w-[220px] shrink-0 border-r border-border bg-sidebar min-h-screen">
       {/* Logo */}
@@ -53,34 +56,41 @@ export function Sidebar() {
           </svg>
         </div>
         <span className="text-sm font-bold tracking-tight text-foreground">
-          StockPilot
+          NAB Pilot
         </span>
       </div>
 
       {/* Main nav */}
       <nav className="flex-1 px-3 py-2">
         <div className="flex flex-col gap-0.5">
-          {navItems.map((item) => (
-            <Tooltip key={item.label}>
-              <TooltipTrigger asChild>
-                <button
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    item.active
-                      ? "bg-primary/15 text-primary"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                  )}
-                >
-                  <item.icon className="size-4 shrink-0" />
-                  <span>{item.label}</span>
-                  {item.active && (
-                    <span className="ml-auto size-1.5 rounded-full bg-primary" />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">{item.label}</TooltipContent>
-            </Tooltip>
-          ))}
+          {navItems.map((item) => {
+            const isActive =
+              item.pathMatch === "/"
+                ? pathname === "/"
+                : pathname.startsWith(item.pathMatch)
+            return (
+              <Tooltip key={item.label}>
+                <TooltipTrigger asChild>
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-primary/15 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                    )}
+                  >
+                    <item.icon className="size-4 shrink-0" />
+                    <span>{item.label}</span>
+                    {isActive && (
+                      <span className="ml-auto size-1.5 rounded-full bg-primary" />
+                    )}
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="right">{item.label}</TooltipContent>
+              </Tooltip>
+            )
+          })}
         </div>
       </nav>
 

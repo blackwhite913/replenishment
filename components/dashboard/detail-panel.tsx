@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useEffect, useState } from "react"
 import {
   LineChart,
   Line,
@@ -32,18 +32,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ArrowRight, TrendingUp, Package, BarChart3, Truck } from "lucide-react"
+import { ArrowRight, TrendingUp, Package, BarChart3, Truck, Target } from "lucide-react"
 import type { SkuItem } from "@/lib/placeholder-data"
 import {
-  generateSalesTrend,
   generateStockLevels,
   transferHistory,
 } from "@/lib/placeholder-data"
+import {
+  computeDailySales,
+  computeDaysCover,
+  computeReorderPoint,
+} from "@/lib/forecasting"
+import { Spinner } from "@/components/ui/spinner"
 
 interface DetailPanelProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedSku: SkuItem | null
+  leadTime?: number
 }
 
 const customTooltipStyle = {
@@ -55,20 +61,52 @@ const customTooltipStyle = {
   boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
 }
 
+function formatDateForAxis(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00")
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
 export function DetailPanel({
   open,
   onOpenChange,
   selectedSku,
+  leadTime = 3,
 }: DetailPanelProps) {
-  const salesTrend = useMemo(() => generateSalesTrend(), [])
   const stockLevels = useMemo(() => generateStockLevels(), [])
+
+  const [skuSalesTrend, setSkuSalesTrend] = useState<{
+    last90Days: { date: string; units: number }[]
+    total90Days: number
+  } | null>(null)
+  const [skuSalesLoading, setSkuSalesLoading] = useState(false)
+  const [skuSalesError, setSkuSalesError] = useState(false)
+
+  useEffect(() => {
+    if (!open || !selectedSku?.sku) {
+      setSkuSalesTrend(null)
+      return
+    }
+    setSkuSalesLoading(true)
+    setSkuSalesError(false)
+    fetch(`/api/unleashed/sales-trend?sku=${encodeURIComponent(selectedSku.sku)}`)
+      .then((res) => res.json().then((body) => ({ ok: res.ok, body })))
+      .then(({ ok, body }) => {
+        if (!ok) throw new Error(body?.detail || "Failed to fetch")
+        setSkuSalesTrend({
+          last90Days: body.last90Days ?? [],
+          total90Days: body.total90Days ?? 0,
+        })
+      })
+      .catch(() => setSkuSalesError(true))
+      .finally(() => setSkuSalesLoading(false))
+  }, [open, selectedSku?.sku])
 
   if (!selectedSku) return null
 
   const statusConfig = {
     healthy: { label: "Healthy", dot: "bg-emerald-400", bg: "bg-emerald-400/10 text-emerald-400 border-emerald-400/20" },
-    monitor: { label: "Monitor", dot: "bg-amber-400", bg: "bg-amber-400/10 text-amber-400 border-amber-400/20" },
-    replenish: { label: "Replenish", dot: "bg-red-400", bg: "bg-red-400/10 text-red-400 border-red-400/20" },
+    monitoring: { label: "Monitoring", dot: "bg-amber-400", bg: "bg-amber-400/10 text-amber-400 border-amber-400/20" },
+    oosRisk: { label: "OOS Risk", dot: "bg-red-400", bg: "bg-red-400/10 text-red-400 border-red-400/20" },
   }
 
   const status = statusConfig[selectedSku.status]
@@ -109,15 +147,30 @@ export function DetailPanel({
             />
             <StatCard
               icon={TrendingUp}
-              label="Daily Sales"
-              value={selectedSku.dailySales}
+              label="Daily Sales (90d avg)"
+              value={
+                skuSalesTrend
+                  ? computeDailySales(skuSalesTrend.total90Days)
+                  : skuSalesLoading
+                    ? "..."
+                    : selectedSku.dailySales
+              }
               color="text-blue-400"
               bg="bg-blue-400/10"
             />
             <StatCard
               icon={BarChart3}
               label="Days Cover"
-              value={selectedSku.daysCover.toFixed(1)}
+              value={
+                skuSalesTrend
+                  ? computeDaysCover(
+                      selectedSku.shopStock,
+                      computeDailySales(skuSalesTrend.total90Days)
+                    )
+                  : skuSalesLoading
+                    ? "..."
+                    : selectedSku.daysCover
+              }
               color="text-amber-400"
               bg="bg-amber-400/10"
             />
@@ -128,69 +181,88 @@ export function DetailPanel({
               color="text-purple-400"
               bg="bg-purple-400/10"
             />
+            <StatCard
+              icon={Target}
+              label="Reorder Point"
+              value={
+                skuSalesTrend
+                  ? computeReorderPoint(
+                      computeDailySales(skuSalesTrend.total90Days),
+                      leadTime
+                    )
+                  : skuSalesLoading
+                    ? "..."
+                    : selectedSku.reorderPoint
+              }
+              color="text-cyan-400"
+              bg="bg-cyan-400/10"
+            />
           </div>
-
-          {/* Suggested transfer action */}
-          {selectedSku.suggestedTransferQty > 0 && (
-            <div className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/20">
-                <ArrowRight className="size-4 text-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs font-semibold text-primary">Suggested Transfer</p>
-                <p className="text-lg font-bold text-foreground">
-                  {selectedSku.suggestedTransferQty} units
-                </p>
-              </div>
-              <span className="text-[10px] text-muted-foreground">3PL to Shop</span>
-            </div>
-          )}
 
           <Separator className="bg-border" />
 
-          {/* Sales trend chart */}
+          {/* Sales trend chart - per-SKU 90-day */}
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-foreground">
-                30-Day Sales Trend
+                90-Day Sales Trend
               </h3>
               <span className="text-[10px] rounded-md bg-secondary px-2 py-0.5 text-muted-foreground font-medium">
-                Last 30 days
+                {skuSalesTrend ? `${skuSalesTrend.total90Days} units (90 days)` : "Last 90 days"}
               </span>
             </div>
             <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={salesTrend}>
-                  <defs>
-                    <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#34d399" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#34d399" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a2e37" vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontSize: 9, fill: "#8b919a" }}
-                    interval={6}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 9, fill: "#8b919a" }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={28}
-                  />
-                  <Tooltip contentStyle={customTooltipStyle} />
-                  <Area
-                    type="monotone"
-                    dataKey="sales"
-                    stroke="#34d399"
-                    strokeWidth={2}
-                    fill="url(#salesGradient)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              {skuSalesLoading ? (
+                <div className="h-full flex items-center justify-center">
+                  <Spinner className="size-8 text-primary/70" />
+                </div>
+              ) : skuSalesError ? (
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                  Failed to load sales data
+                </div>
+              ) : skuSalesTrend?.last90Days?.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={skuSalesTrend.last90Days.map((p) => ({
+                      ...p,
+                      displayDate: formatDateForAxis(p.date),
+                    }))}
+                  >
+                    <defs>
+                      <linearGradient id="salesGradientDetail" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#34d399" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#34d399" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2e37" vertical={false} />
+                    <XAxis
+                      dataKey="displayDate"
+                      tick={{ fontSize: 9, fill: "#8b919a" }}
+                      interval={Math.floor(skuSalesTrend.last90Days.length / 6)}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 9, fill: "#8b919a" }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={28}
+                    />
+                    <Tooltip contentStyle={customTooltipStyle} />
+                    <Area
+                      type="monotone"
+                      dataKey="units"
+                      stroke="#34d399"
+                      strokeWidth={2}
+                      fill="url(#salesGradientDetail)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                  No sales data for this SKU
+                </div>
+              )}
             </div>
           </div>
 

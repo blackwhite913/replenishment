@@ -25,10 +25,10 @@ export function TopNav({
       <div className="flex flex-col gap-4 px-6 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground tracking-tight">
-            Dashboard
+            NAB Replenishment Dashboard
           </h1>
           <p className="text-xs text-muted-foreground">
-            Replenishment monitoring across all channels
+            NAB Inventory Replenishment Pilot
           </p>
         </div>
 

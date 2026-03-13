@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Package, AlertTriangle, Eye, Warehouse, TrendingUp, TrendingDown } from "lucide-react"
+import { Package, AlertTriangle, Eye, Warehouse } from "lucide-react"
 import type { SkuItem } from "@/lib/placeholder-data"
 import { Spinner } from "@/components/ui/spinner"
 
@@ -14,8 +14,8 @@ interface KpiCardsProps {
 
 export function KpiCards({ data }: KpiCardsProps) {
   const totalSkus = data.length
-  const atRisk = data.filter((d) => d.status === "replenish").length
-  const monitoring = data.filter((d) => d.status === "monitor").length
+  const atRisk = data.filter((d) => d.status === "oosRisk").length
+  const monitoring = data.filter((d) => d.status === "monitoring").length
 
   const [stockOnHand, setStockOnHand] = useState<{
     loading: boolean
@@ -55,8 +55,6 @@ export function KpiCards({ data }: KpiCardsProps) {
       label: "Total SKUs",
       value: totalSkus.toLocaleString(),
       icon: Package,
-      trend: "+2.5%",
-      trendUp: true,
       accentColor: "from-emerald-500/20 to-emerald-500/5",
       iconColor: "text-emerald-400",
       borderAccent: "border-l-emerald-500",
@@ -65,8 +63,6 @@ export function KpiCards({ data }: KpiCardsProps) {
       label: "SKUs at Risk",
       value: atRisk.toLocaleString(),
       icon: AlertTriangle,
-      trend: "+1",
-      trendUp: false,
       accentColor: "from-red-500/20 to-red-500/5",
       iconColor: "text-red-400",
       borderAccent: "border-l-red-500",
@@ -75,8 +71,6 @@ export function KpiCards({ data }: KpiCardsProps) {
       label: "Monitoring",
       value: monitoring.toLocaleString(),
       icon: Eye,
-      trend: "-1",
-      trendUp: true,
       accentColor: "from-amber-500/20 to-amber-500/5",
       iconColor: "text-amber-400",
       borderAccent: "border-l-amber-500",
@@ -85,8 +79,6 @@ export function KpiCards({ data }: KpiCardsProps) {
       label: "3PL Stock",
       value: "",
       icon: Warehouse,
-      trend: "+12%",
-      trendUp: true,
       accentColor: "from-blue-500/20 to-blue-500/5",
       iconColor: "text-blue-400",
       borderAccent: "border-l-blue-500",
@@ -102,11 +94,11 @@ export function KpiCards({ data }: KpiCardsProps) {
               ? null
               : stockOnHand.timeout
                 ? "Timeout"
-              : stockOnHand.error
-                ? "Error"
-                : stockOnHand.total !== null
-                  ? stockOnHand.total.toLocaleString()
-                  : "\u2014"
+                : stockOnHand.error
+                  ? "Error"
+                  : stockOnHand.total !== null
+                    ? stockOnHand.total.toLocaleString()
+                    : "\u2014"
             : card.value
 
         const cardContent = (
@@ -129,35 +121,24 @@ export function KpiCards({ data }: KpiCardsProps) {
                     displayValue
                   )}
                 </p>
-              {card.label === "3PL Stock" && stockOnHand.error && (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    setRetryKey((value) => value + 1)
-                  }}
-                  className="mt-1 text-[10px] font-medium text-primary underline underline-offset-2"
-                >
-                  Retry
-                </button>
-              )}
-              <div className="flex items-center gap-1 mt-1">
-                {card.trendUp ? (
-                  <TrendingUp className="size-3 text-emerald-400" />
-                ) : (
-                  <TrendingDown className="size-3 text-red-400" />
+                {card.label === "3PL Stock" && stockOnHand.error && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setRetryKey((value) => value + 1)
+                    }}
+                    className="mt-1 text-[10px] font-medium text-primary underline underline-offset-2"
+                  >
+                    Retry
+                  </button>
                 )}
-                <span className={`text-[10px] font-medium ${card.trendUp ? "text-emerald-400" : "text-red-400"}`}>
-                  {card.trend}
-                </span>
-                <span className="text-[10px] text-muted-foreground">vs last week</span>
+              </div>
+              <div className={`flex size-10 items-center justify-center rounded-xl bg-secondary/80 ${card.iconColor} transition-transform group-hover:scale-110`}>
+                <card.icon className="size-5" />
               </div>
             </div>
-            <div className={`flex size-10 items-center justify-center rounded-xl bg-secondary/80 ${card.iconColor} transition-transform group-hover:scale-110`}>
-              <card.icon className="size-5" />
-            </div>
-          </div>
 
             {/* Mini sparkline decoration */}
             <div className="relative mt-3 flex items-end gap-[2px] h-6">

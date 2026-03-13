@@ -1,5 +1,7 @@
 import { createHmac } from "crypto"
 import { NextResponse } from "next/server"
+import { getShopifySkuSet } from "@/lib/shopify-skus"
+import { getCwInventory } from "@/lib/cw-inventory"
 
 const UNLEASHED_BASE = "https://api.unleashedsoftware.com"
 const PAGE_SIZE = 200
@@ -36,6 +38,7 @@ interface InternalStockItem {
   unit3Qty: number
   unit10Qty: number
   internalStockTotal: number
+  threePLStock: number
 }
 
 function getSignature(queryString: string, apiKey: string): string {
@@ -187,6 +190,7 @@ function mergeToInternalItems(
         unit3Qty: qty,
         unit10Qty: 0,
         internalStockTotal: 0,
+        threePLStock: 0,
       })
     }
   }
@@ -205,6 +209,7 @@ function mergeToInternalItems(
         unit3Qty: 0,
         unit10Qty: qty,
         internalStockTotal: 0,
+        threePLStock: 0,
       })
     }
   }
@@ -212,6 +217,7 @@ function mergeToInternalItems(
   return Array.from(mergeMap.values()).map((entry) => ({
     ...entry,
     internalStockTotal: entry.unit3Qty + entry.unit10Qty,
+    threePLStock: 0,
   }))
 }
 
@@ -248,11 +254,19 @@ export async function GET() {
         let u10Items: StockOnHandItem[]
         let usedFallback = false
 
+        let cwData: Awaited<ReturnType<typeof getCwInventory>> | null = null
         try {
-          ;[u3Items, u10Items] = await Promise.all([
+          const [u3Res, u10Res, cwRes] = await Promise.all([
             fetchAllPagesForWarehouse("U3", apiId, apiKey),
             fetchAllPagesForWarehouse("U10", apiId, apiKey),
+            getCwInventory().catch((err) => {
+              console.error("[internal-stock] CW inventory fetch failed:", err)
+              return null
+            }),
           ])
+          u3Items = u3Res
+          u10Items = u10Res
+          cwData = cwRes
         } catch (whErr) {
           usedFallback = true
           const allItems = await fetchAllPagesAllWarehouses(apiId, apiKey)
@@ -263,7 +277,54 @@ export async function GET() {
           u10Items = filtered.filter((i) => (i.WarehouseCode ?? "") === "U10")
         }
 
-        const items = mergeToInternalItems(u3Items, u10Items)
+        const mergedItems = mergeToInternalItems(u3Items, u10Items)
+        const shopifySkuSet = getShopifySkuSet()
+
+        let items: InternalStockItem[]
+
+        if (shopifySkuSet === null) {
+          console.error("[internal-stock] Shopify CSV missing, returning unfiltered data")
+          items = mergedItems
+        } else if (shopifySkuSet.size === 0) {
+          items = []
+        } else {
+          const skuSet = shopifySkuSet
+          const filteredItems = mergedItems.filter((i) =>
+            skuSet.has(i.productCode)
+          )
+          const existingProductCodes = new Set(
+            filteredItems.map((i) => i.productCode)
+          )
+          const result = [...filteredItems]
+          for (const sku of skuSet) {
+            if (!existingProductCodes.has(sku)) {
+              result.push({
+                productCode: sku,
+                productDescription: sku,
+                productGuid: "",
+                unit3Qty: 0,
+                unit10Qty: 0,
+                internalStockTotal: 0,
+                threePLStock: 0,
+              })
+            }
+          }
+          items = result
+        }
+
+        const threePlStockMap = new Map<string, number>()
+        if (cwData?.items) {
+          for (const row of cwData.items) {
+            const code = row.productCode ?? ""
+            const qty = Number(row.qtyOnHand) || 0
+            threePlStockMap.set(code, (threePlStockMap.get(code) ?? 0) + qty)
+          }
+        }
+        items = items.map((item) => ({
+          ...item,
+          threePLStock: threePlStockMap.get(item.productCode) ?? 0,
+        }))
+
         cache = { items, lastUpdated: Date.now() }
         console.log("Internal stock loaded:", items.length)
         return items

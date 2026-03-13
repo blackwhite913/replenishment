@@ -1,4 +1,4 @@
-export type SkuStatus = "healthy" | "monitor" | "replenish"
+export type SkuStatus = "healthy" | "monitoring" | "oosRisk"
 
 export interface SkuItem {
   sku: string
@@ -8,7 +8,6 @@ export interface SkuItem {
   daysCover: number
   reorderPoint: number
   thirdPlStock: number
-  suggestedTransferQty: number
   status: SkuStatus
 }
 
@@ -39,8 +38,7 @@ export const skuData: SkuItem[] = [
     daysCover: 1.5,
     reorderPoint: 24,
     thirdPlStock: 340,
-    suggestedTransferQty: 60,
-    status: "replenish",
+    status: "oosRisk",
   },
   {
     sku: "SKU-1002",
@@ -50,8 +48,7 @@ export const skuData: SkuItem[] = [
     daysCover: 3.0,
     reorderPoint: 45,
     thirdPlStock: 820,
-    suggestedTransferQty: 45,
-    status: "monitor",
+    status: "monitoring",
   },
   {
     sku: "SKU-1003",
@@ -61,7 +58,6 @@ export const skuData: SkuItem[] = [
     daysCover: 20.0,
     reorderPoint: 18,
     thirdPlStock: 450,
-    suggestedTransferQty: 0,
     status: "healthy",
   },
   {
@@ -72,8 +68,7 @@ export const skuData: SkuItem[] = [
     daysCover: 1.6,
     reorderPoint: 15,
     thirdPlStock: 0,
-    suggestedTransferQty: 0,
-    status: "replenish",
+    status: "oosRisk",
   },
   {
     sku: "SKU-1005",
@@ -83,7 +78,6 @@ export const skuData: SkuItem[] = [
     daysCover: 8.0,
     reorderPoint: 12,
     thirdPlStock: 200,
-    suggestedTransferQty: 0,
     status: "healthy",
   },
   {
@@ -94,8 +88,7 @@ export const skuData: SkuItem[] = [
     daysCover: 2.6,
     reorderPoint: 21,
     thirdPlStock: 155,
-    suggestedTransferQty: 30,
-    status: "monitor",
+    status: "monitoring",
   },
   {
     sku: "SKU-1007",
@@ -105,8 +98,7 @@ export const skuData: SkuItem[] = [
     daysCover: 0.5,
     reorderPoint: 30,
     thirdPlStock: 600,
-    suggestedTransferQty: 90,
-    status: "replenish",
+    status: "oosRisk",
   },
   {
     sku: "SKU-1008",
@@ -116,7 +108,6 @@ export const skuData: SkuItem[] = [
     daysCover: 21.7,
     reorderPoint: 9,
     thirdPlStock: 180,
-    suggestedTransferQty: 0,
     status: "healthy",
   },
   {
@@ -127,8 +118,7 @@ export const skuData: SkuItem[] = [
     daysCover: 2.4,
     reorderPoint: 27,
     thirdPlStock: 410,
-    suggestedTransferQty: 40,
-    status: "monitor",
+    status: "monitoring",
   },
   {
     sku: "SKU-1010",
@@ -138,8 +128,7 @@ export const skuData: SkuItem[] = [
     daysCover: 0.5,
     reorderPoint: 18,
     thirdPlStock: 95,
-    suggestedTransferQty: 50,
-    status: "replenish",
+    status: "oosRisk",
   },
   {
     sku: "SKU-1011",
@@ -149,7 +138,6 @@ export const skuData: SkuItem[] = [
     daysCover: 8.0,
     reorderPoint: 15,
     thirdPlStock: 320,
-    suggestedTransferQty: 0,
     status: "healthy",
   },
   {
@@ -160,8 +148,7 @@ export const skuData: SkuItem[] = [
     daysCover: 2.3,
     reorderPoint: 18,
     thirdPlStock: 275,
-    suggestedTransferQty: 25,
-    status: "monitor",
+    status: "monitoring",
   },
 ]
 
