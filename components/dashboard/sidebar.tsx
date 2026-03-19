@@ -4,13 +4,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
-  Package,
   TrendingUp,
   Truck,
-  BarChart3,
-  Settings,
-  HelpCircle,
-  Bell,
   ChevronDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -21,17 +16,9 @@ import {
 } from "@/components/ui/tooltip"
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Overview", href: "/", pathMatch: "/" },
-  { icon: Package, label: "Inventory", href: "/", pathMatch: "/inventory" },
+  { icon: LayoutDashboard, label: "Inventory Risk", href: "/", pathMatch: "/" },
   { icon: TrendingUp, label: "Forecasting", href: "/forecasting", pathMatch: "/forecasting" },
   { icon: Truck, label: "Transfers", href: "/", pathMatch: "/transfers" },
-  { icon: BarChart3, label: "Reports", href: "/", pathMatch: "/reports" },
-  { icon: Bell, label: "Alerts", href: "/", pathMatch: "/alerts" },
-]
-
-const bottomItems = [
-  { icon: HelpCircle, label: "Help Center" },
-  { icon: Settings, label: "Settings" },
 ]
 
 export function Sidebar() {
@@ -93,21 +80,6 @@ export function Sidebar() {
           })}
         </div>
       </nav>
-
-      {/* Bottom nav */}
-      <div className="border-t border-border px-3 py-3">
-        <div className="flex flex-col gap-0.5">
-          {bottomItems.map((item) => (
-            <button
-              key={item.label}
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <item.icon className="size-4 shrink-0" />
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* User */}
       <div className="border-t border-border px-3 py-3">

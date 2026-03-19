@@ -2,8 +2,6 @@
 
 import { useMemo, useEffect, useState } from "react"
 import {
-  LineChart,
-  Line,
   AreaChart,
   Area,
   XAxis,
@@ -11,9 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
-  BarChart,
-  Bar,
 } from "recharts"
 import {
   Sheet,
@@ -32,17 +27,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ArrowRight, TrendingUp, Package, BarChart3, Truck, Target } from "lucide-react"
-import type { SkuItem } from "@/lib/placeholder-data"
 import {
-  generateStockLevels,
-  transferHistory,
-} from "@/lib/placeholder-data"
+  TrendingUp,
+  Package,
+  BarChart3,
+  Truck,
+  Target,
+  Layers,
+  ShoppingCart,
+  Cog,
+} from "lucide-react"
+import type { SkuItem } from "@/lib/placeholder-data"
 import {
   computeDailySales,
   computeDaysCover,
   computeReorderPoint,
 } from "@/lib/forecasting"
+import type { BomDetail } from "@/lib/inventory-risk"
 import { Spinner } from "@/components/ui/spinner"
 
 interface DetailPanelProps {
@@ -50,6 +51,12 @@ interface DetailPanelProps {
   onOpenChange: (open: boolean) => void
   selectedSku: SkuItem | null
   leadTime?: number
+  demandTrendOverrideBySku?: Record<
+    string,
+    { last90Days: { date: string; units: number }[]; total90Days: number }
+  >
+  demandTrendTitle?: string
+  bomVisibilityMap?: Map<string, BomDetail[]>
 }
 
 const customTooltipStyle = {
@@ -71,9 +78,10 @@ export function DetailPanel({
   onOpenChange,
   selectedSku,
   leadTime = 3,
+  demandTrendOverrideBySku,
+  demandTrendTitle = "90-Day Demand Trend",
+  bomVisibilityMap,
 }: DetailPanelProps) {
-  const stockLevels = useMemo(() => generateStockLevels(), [])
-
   const [skuSalesTrend, setSkuSalesTrend] = useState<{
     last90Days: { date: string; units: number }[]
     total90Days: number
@@ -84,6 +92,16 @@ export function DetailPanel({
   useEffect(() => {
     if (!open || !selectedSku?.sku) {
       setSkuSalesTrend(null)
+      return
+    }
+    const override = demandTrendOverrideBySku?.[selectedSku.sku]
+    if (override) {
+      setSkuSalesTrend({
+        last90Days: override.last90Days ?? [],
+        total90Days: override.total90Days ?? 0,
+      })
+      setSkuSalesError(false)
+      setSkuSalesLoading(false)
       return
     }
     setSkuSalesLoading(true)
@@ -99,7 +117,12 @@ export function DetailPanel({
       })
       .catch(() => setSkuSalesError(true))
       .finally(() => setSkuSalesLoading(false))
-  }, [open, selectedSku?.sku])
+  }, [open, selectedSku?.sku, demandTrendOverrideBySku])
+
+  const bomDetails = useMemo(() => {
+    if (!selectedSku?.sku || !bomVisibilityMap) return []
+    return bomVisibilityMap.get(selectedSku.sku) ?? []
+  }, [selectedSku?.sku, bomVisibilityMap])
 
   if (!selectedSku) return null
 
@@ -110,6 +133,13 @@ export function DetailPanel({
   }
 
   const status = statusConfig[selectedSku.status]
+
+  const demandTypeLabel: Record<string, string> = {
+    SALES_ONLY: "Sales Only",
+    ASM_ONLY: "Assembly Only",
+    HYBRID: "Hybrid (SS + ASM)",
+    NO_DEMAND: "No Demand",
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -129,6 +159,14 @@ export function DetailPanel({
                   <span className={`size-1.5 rounded-full ${status.dot}`} />
                   {status.label}
                 </Badge>
+                {selectedSku.isComponent && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0 font-semibold bg-violet-400/10 text-violet-400 border-violet-400/20"
+                  >
+                    Component
+                  </Badge>
+                )}
               </SheetTitle>
               <SheetDescription className="text-muted-foreground">{selectedSku.productName}</SheetDescription>
             </div>
@@ -147,7 +185,7 @@ export function DetailPanel({
             />
             <StatCard
               icon={TrendingUp}
-              label="Daily Sales (90d avg)"
+              label="Daily Demand (90d avg)"
               value={
                 skuSalesTrend
                   ? computeDailySales(skuSalesTrend.total90Days)
@@ -199,13 +237,103 @@ export function DetailPanel({
             />
           </div>
 
+          {/* Demand breakdown */}
+          {(selectedSku.salesDemand !== undefined ||
+            selectedSku.assemblyDemand !== undefined) && (
+            <>
+              <Separator className="bg-border" />
+              <div className="rounded-xl border border-border bg-card p-4">
+                <h3 className="text-sm font-bold text-foreground mb-3">
+                  Demand Breakdown (90 days)
+                </h3>
+                <div className="grid grid-cols-3 gap-3">
+                  <MiniStat
+                    icon={ShoppingCart}
+                    label="Sales (SS)"
+                    value={(selectedSku.salesDemand ?? 0).toLocaleString()}
+                    color="text-blue-400"
+                  />
+                  <MiniStat
+                    icon={Cog}
+                    label="Assembly (ASM)"
+                    value={(selectedSku.assemblyDemand ?? 0).toLocaleString()}
+                    color="text-purple-400"
+                  />
+                  <MiniStat
+                    icon={Layers}
+                    label="Total"
+                    value={(selectedSku.totalDemand ?? 0).toLocaleString()}
+                    color="text-cyan-400"
+                  />
+                </div>
+                {selectedSku.demandType && (
+                  <p className="mt-2 text-[10px] text-muted-foreground">
+                    Type:{" "}
+                    <span className="font-semibold text-foreground">
+                      {demandTypeLabel[selectedSku.demandType] ?? selectedSku.demandType}
+                    </span>
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* BOM drill-down */}
+          {bomDetails.length > 0 && (
+            <>
+              <Separator className="bg-border" />
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                  <h3 className="text-sm font-bold text-foreground">
+                    Used in BOMs
+                  </h3>
+                  <span className="text-[10px] rounded-md bg-violet-400/10 px-2 py-0.5 text-violet-400 font-medium">
+                    {bomDetails.length} BOM{bomDetails.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-b border-border bg-secondary/30 hover:bg-secondary/30">
+                      <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        Parent SKU
+                      </TableHead>
+                      <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        Parent Name
+                      </TableHead>
+                      <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        Qty / Assembly
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {bomDetails.map((bom) => (
+                      <TableRow key={bom.parentSku} className="border-b border-border/50">
+                        <TableCell className="font-mono text-xs font-bold text-primary">
+                          {bom.parentSku}
+                        </TableCell>
+                        <TableCell className="text-xs text-foreground max-w-[180px] truncate">
+                          {bom.parentName}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className="rounded bg-violet-400/10 px-2 py-0.5 text-xs font-bold tabular-nums text-violet-400">
+                            {bom.qtyPerAssembly}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+
           <Separator className="bg-border" />
 
-          {/* Sales trend chart - per-SKU 90-day */}
+          {/* Demand trend chart */}
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-foreground">
-                90-Day Sales Trend
+                {demandTrendTitle}
               </h3>
               <span className="text-[10px] rounded-md bg-secondary px-2 py-0.5 text-muted-foreground font-medium">
                 {skuSalesTrend ? `${skuSalesTrend.total90Days} units (90 days)` : "Last 90 days"}
@@ -218,7 +346,7 @@ export function DetailPanel({
                 </div>
               ) : skuSalesError ? (
                 <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                  Failed to load sales data
+                  Failed to load demand data
                 </div>
               ) : skuSalesTrend?.last90Days?.length ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -260,117 +388,10 @@ export function DetailPanel({
                 </ResponsiveContainer>
               ) : (
                 <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                  No sales data for this SKU
+                  No demand data for this SKU
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Stock levels chart */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-foreground">
-                Stock Levels
-              </h3>
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                  <span className="size-2 rounded-full bg-blue-400" />
-                  Shop
-                </span>
-                <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                  <span className="size-2 rounded-full bg-purple-400" />
-                  3PL
-                </span>
-              </div>
-            </div>
-            <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={stockLevels}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a2e37" vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontSize: 9, fill: "#8b919a" }}
-                    interval={6}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 9, fill: "#8b919a" }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={32}
-                  />
-                  <Tooltip contentStyle={customTooltipStyle} />
-                  <Line
-                    type="monotone"
-                    dataKey="shop"
-                    name="Shop"
-                    stroke="#60a5fa"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="thirdPl"
-                    name="3PL"
-                    stroke="#a78bfa"
-                    strokeWidth={2}
-                    dot={false}
-                    strokeDasharray="4 4"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <Separator className="bg-border" />
-
-          {/* Transfer history */}
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-bold text-foreground">
-                Transfer History
-              </h3>
-              <span className="text-[10px] rounded-md bg-secondary px-2 py-0.5 text-muted-foreground font-medium">
-                {transferHistory.length} records
-              </span>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-border bg-secondary/30 hover:bg-secondary/30">
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Date
-                  </TableHead>
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Route
-                  </TableHead>
-                  <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Qty
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transferHistory.map((record, i) => (
-                  <TableRow key={i} className="border-b border-border/50">
-                    <TableCell className="text-xs text-muted-foreground">
-                      {record.date}
-                    </TableCell>
-                    <TableCell className="text-xs text-foreground">
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-muted-foreground">{record.from}</span>
-                        <ArrowRight className="size-3 text-primary" />
-                        <span>{record.to}</span>
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-bold tabular-nums text-primary">
-                        +{record.qty}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
           </div>
         </div>
       </SheetContent>
@@ -404,6 +425,26 @@ function StatCard({
           {typeof value === "number" ? value.toLocaleString() : value}
         </p>
       </div>
+    </div>
+  )
+}
+
+function MiniStat({
+  icon: Icon,
+  label,
+  value,
+  color,
+}: {
+  icon: React.ElementType
+  label: string
+  value: string
+  color: string
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1 text-center">
+      <Icon className={`size-4 ${color}`} />
+      <p className="text-[10px] font-semibold text-muted-foreground">{label}</p>
+      <p className="text-sm font-bold tabular-nums text-foreground">{value}</p>
     </div>
   )
 }

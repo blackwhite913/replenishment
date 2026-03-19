@@ -1,5 +1,7 @@
 export type SkuStatus = "healthy" | "monitoring" | "oosRisk"
 
+export type DemandType = "SALES_ONLY" | "ASM_ONLY" | "HYBRID" | "NO_DEMAND"
+
 export interface SkuItem {
   sku: string
   productName: string
@@ -9,6 +11,13 @@ export interface SkuItem {
   reorderPoint: number
   thirdPlStock: number
   status: SkuStatus
+  isComponent?: boolean
+  isUsedInBOM?: boolean
+  salesDemand?: number
+  assemblyDemand?: number
+  totalDemand?: number
+  demandType?: DemandType
+  bomParents?: string[]
 }
 
 export interface SalesTrendPoint {

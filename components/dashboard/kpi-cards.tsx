@@ -2,18 +2,20 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Package, AlertTriangle, Eye, Warehouse } from "lucide-react"
+import { Package, AlertTriangle, Eye, Warehouse, Info } from "lucide-react"
 import type { SkuItem } from "@/lib/placeholder-data"
 import { Spinner } from "@/components/ui/spinner"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 const SPARKLINE_HEIGHTS = [40, 65, 30, 80, 55, 70, 45, 90, 60, 35, 75, 50]
 
 interface KpiCardsProps {
   data: SkuItem[]
+  totalSkuCount?: number
 }
 
-export function KpiCards({ data }: KpiCardsProps) {
-  const totalSkus = data.length
+export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
+  const totalSkus = totalSkuCount ?? data.length
   const atRisk = data.filter((d) => d.status === "oosRisk").length
   const monitoring = data.filter((d) => d.status === "monitoring").length
 
@@ -52,8 +54,11 @@ export function KpiCards({ data }: KpiCardsProps) {
 
   const cards = [
     {
-      label: "Total SKUs",
+      label: "Analyzed SKUs",
       value: totalSkus.toLocaleString(),
+      subtitle: "Excludes BOM parent SKUs (assemblies)",
+      titleTooltip:
+        "This count excludes assembly SKUs (BOM parents) which are built from components and not directly stocked.",
       icon: Package,
       accentColor: "from-emerald-500/20 to-emerald-500/5",
       iconColor: "text-emerald-400",
@@ -62,6 +67,7 @@ export function KpiCards({ data }: KpiCardsProps) {
     {
       label: "SKUs at Risk",
       value: atRisk.toLocaleString(),
+      subtitle: undefined as string | undefined,
       icon: AlertTriangle,
       accentColor: "from-red-500/20 to-red-500/5",
       iconColor: "text-red-400",
@@ -70,6 +76,7 @@ export function KpiCards({ data }: KpiCardsProps) {
     {
       label: "Monitoring",
       value: monitoring.toLocaleString(),
+      subtitle: undefined as string | undefined,
       icon: Eye,
       accentColor: "from-amber-500/20 to-amber-500/5",
       iconColor: "text-amber-400",
@@ -78,6 +85,7 @@ export function KpiCards({ data }: KpiCardsProps) {
     {
       label: "3PL Stock",
       value: "",
+      subtitle: undefined as string | undefined,
       icon: Warehouse,
       accentColor: "from-blue-500/20 to-blue-500/5",
       iconColor: "text-blue-400",
@@ -109,7 +117,21 @@ export function KpiCards({ data }: KpiCardsProps) {
             <div className="relative flex items-start justify-between">
               <div className="flex flex-col gap-1">
                 <p className="text-xs font-medium text-muted-foreground">
-                  {card.label}
+                  <span className="inline-flex items-center gap-1.5">
+                    {card.label}
+                    {card.label === "Analyzed SKUs" && card.titleTooltip && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex cursor-help items-center text-muted-foreground/80 hover:text-foreground">
+                            <Info className="size-3.5" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={6} className="max-w-xs">
+                          {card.titleTooltip}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </span>
                 </p>
                 <p className="text-2xl font-bold tracking-tight text-foreground">
                   {card.label === "3PL Stock" && stockOnHand.loading ? (
@@ -121,6 +143,11 @@ export function KpiCards({ data }: KpiCardsProps) {
                     displayValue
                   )}
                 </p>
+                {card.label === "Analyzed SKUs" && card.subtitle && (
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                    {card.subtitle}
+                  </p>
+                )}
                 {card.label === "3PL Stock" && stockOnHand.error && (
                   <button
                     type="button"

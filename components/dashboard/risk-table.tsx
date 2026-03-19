@@ -9,6 +9,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { ArrowUpRight } from "lucide-react"
 import type { SkuItem } from "@/lib/placeholder-data"
 
@@ -42,6 +47,34 @@ function StatusBadge({ status }: { status: SkuItem["status"] }) {
     <Badge variant="outline" className={`gap-1.5 font-medium ${classes}`}>
       <span className={`size-1.5 rounded-full ${dot}`} />
       {label}
+    </Badge>
+  )
+}
+
+function DemandTypeBadge({ demandType }: { demandType?: string }) {
+  if (!demandType || demandType === "NO_DEMAND") return null
+
+  const config: Record<string, { label: string; classes: string }> = {
+    SALES_ONLY: {
+      label: "SS",
+      classes: "bg-blue-400/10 text-blue-400 border-blue-400/20",
+    },
+    ASM_ONLY: {
+      label: "ASM",
+      classes: "bg-purple-400/10 text-purple-400 border-purple-400/20",
+    },
+    HYBRID: {
+      label: "SS+ASM",
+      classes: "bg-cyan-400/10 text-cyan-400 border-cyan-400/20",
+    },
+  }
+
+  const c = config[demandType]
+  if (!c) return null
+
+  return (
+    <Badge variant="outline" className={`text-[9px] px-1 py-0 font-medium ${c.classes}`}>
+      {c.label}
     </Badge>
   )
 }
@@ -86,7 +119,10 @@ export function RiskTable({ data, onRowClick }: RiskTableProps) {
                 Shop Stock
               </TableHead>
               <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                Daily Sales
+                Daily Demand
+              </TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                Demand (90d)
               </TableHead>
               <TableHead className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 Days Cover
@@ -107,7 +143,7 @@ export function RiskTable({ data, onRowClick }: RiskTableProps) {
             {data.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={9}
+                  colSpan={10}
                   className="h-24 text-center text-muted-foreground"
                 >
                   No SKUs match the current filters.
@@ -121,7 +157,17 @@ export function RiskTable({ data, onRowClick }: RiskTableProps) {
                   onClick={() => onRowClick(item)}
                 >
                   <TableCell className="font-mono text-xs font-bold text-primary">
-                    {item.sku}
+                    <span className="flex items-center gap-1.5">
+                      {item.sku}
+                      {item.isComponent && (
+                        <Badge
+                          variant="outline"
+                          className="text-[8px] px-1 py-0 font-semibold bg-violet-400/10 text-violet-400 border-violet-400/20"
+                        >
+                          BOM
+                        </Badge>
+                      )}
+                    </span>
                   </TableCell>
                   <TableCell className="max-w-[180px] truncate text-sm text-foreground">
                     {item.productName}
@@ -131,6 +177,22 @@ export function RiskTable({ data, onRowClick }: RiskTableProps) {
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
                     {item.dailySales.toLocaleString()}/day
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center gap-1.5 tabular-nums text-sm text-muted-foreground">
+                          {(item.totalDemand ?? 0).toLocaleString()}
+                          <DemandTypeBadge demandType={item.demandType} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        <div className="flex flex-col gap-0.5">
+                          <span>Sales: {(item.salesDemand ?? 0).toLocaleString()}</span>
+                          <span>Assembly: {(item.assemblyDemand ?? 0).toLocaleString()}</span>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   </TableCell>
                   <TableCell>
                     <DaysCoverValue value={item.daysCover} status={item.status} />
