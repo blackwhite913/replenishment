@@ -6,6 +6,10 @@ import { Package, AlertTriangle, Eye, Warehouse, Info } from "lucide-react"
 import type { SkuItem } from "@/lib/placeholder-data"
 import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  getCwProductsCached,
+  invalidateCwProductsCache,
+} from "@/lib/cw-products-client-cache"
 
 const SPARKLINE_HEIGHTS = [40, 65, 30, 80, 55, 70, 45, 90, 60, 35, 75, 50]
 
@@ -28,16 +32,17 @@ export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
   const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 30000)
+    let cancelled = false
     setStockOnHand({ loading: true, error: false, timeout: false, total: null })
 
-    fetch("/api/unleashed/cw-products", { signal: controller.signal })
-      .then((res) => {
-        return res.json().then((body) => ({ ok: res.ok, body }))
-      })
-      .then(({ ok, body }) => {
-        if (!ok) throw new Error(body?.message || "Failed to fetch")
+    const timeoutMs = 30_000
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), timeoutMs)
+    )
+
+    Promise.race([getCwProductsCached(), timeoutPromise])
+      .then((body) => {
+        if (cancelled) return
         setStockOnHand({
           loading: false,
           error: false,
@@ -46,10 +51,19 @@ export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
         })
       })
       .catch((err: unknown) => {
-        const isTimeout = err instanceof Error && err.name === "AbortError"
-        setStockOnHand({ loading: false, error: true, timeout: isTimeout, total: null })
+        if (cancelled) return
+        const isTimeout = err instanceof Error && err.message === "timeout"
+        setStockOnHand({
+          loading: false,
+          error: true,
+          timeout: isTimeout,
+          total: null,
+        })
       })
-      .finally(() => clearTimeout(timeout))
+
+    return () => {
+      cancelled = true
+    }
   }, [retryKey])
 
   const cards = [
@@ -154,6 +168,7 @@ export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
                     onClick={(event) => {
                       event.preventDefault()
                       event.stopPropagation()
+                      invalidateCwProductsCache()
                       setRetryKey((value) => value + 1)
                     }}
                     className="mt-1 text-[10px] font-medium text-primary underline underline-offset-2"

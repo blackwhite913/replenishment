@@ -14,23 +14,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Spinner } from "@/components/ui/spinner"
-
-interface CwInventoryItem {
-  productCode: string
-  productDescription: string
-  warehouseName: string
-  qtyOnHand: number
-  allocatedQty: number
-  availableQty: number
-  avgCost: number
-  totalCost: number
-}
-
-interface CwInventoryResponse {
-  totalQtyOnHand: number
-  skuCount: number
-  items: CwInventoryItem[]
-}
+import {
+  getCwProductsCached,
+  invalidateCwProductsCache,
+  type CwInventoryResponse,
+} from "@/lib/cw-products-client-cache"
 
 export default function StockOnHandPage() {
   const [data, setData] = useState<CwInventoryResponse | null>(null)
@@ -42,20 +30,7 @@ export default function StockOnHandPage() {
     setLoading(true)
     setError(null)
 
-    fetch("/api/unleashed/cw-products")
-      .then((res) => {
-        return res.json().then((body) => ({ ok: res.ok, body }))
-      })
-      .then(({ ok, body }) => {
-        if (!ok) {
-          const message =
-            body?.error === "warehouse_controls_off"
-              ? "Warehouse-level inventory is not enabled in Unleashed. Turn on 'Per Warehouse Controls' or use InventoryDetail endpoint if available."
-              : body?.message || "Failed to load CW warehouse inventory."
-          throw new Error(message)
-        }
-        return body as CwInventoryResponse
-      })
+    getCwProductsCached()
       .then(setData)
       .catch((fetchError: unknown) => {
         const message =
@@ -109,7 +84,10 @@ export default function StockOnHandPage() {
                   variant="outline"
                   size="sm"
                   className="mt-4"
-                  onClick={() => setRetryKey((value) => value + 1)}
+                  onClick={() => {
+                    invalidateCwProductsCache()
+                    setRetryKey((value) => value + 1)
+                  }}
                 >
                   Retry
                 </Button>

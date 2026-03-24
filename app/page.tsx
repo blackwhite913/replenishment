@@ -10,15 +10,12 @@ import { DetailPanel } from "@/components/dashboard/detail-panel"
 import type { SkuItem } from "@/lib/placeholder-data"
 import { Spinner } from "@/components/ui/spinner"
 import { Button } from "@/components/ui/button"
-import { Download } from "lucide-react"
-import { loadShopifySkus } from "@/lib/loadShopifySkus"
+import { Download, RefreshCw } from "lucide-react"
+import { useInventoryData } from "@/components/providers/inventory-data-provider"
 import {
   buildUnifiedDataset,
   buildBomVisibilityMap,
   classifySkus,
-  type BOMItem,
-  type InternalStockItem,
-  type DemandSource,
 } from "@/lib/inventory-risk"
 import type { DemandDayPoint } from "@/lib/bom-demand"
 
@@ -110,99 +107,27 @@ export default function DashboardPage() {
   const [selectedSku, setSelectedSku] = useState<SkuItem | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
 
-  const [internalStockItems, setInternalStockItems] = useState<
-    InternalStockItem[]
-  >([])
-  const [salesBySku, setSalesBySku] = useState<DemandSource>({})
-  const [assemblyByComponentSku, setAssemblyByComponentSku] =
-    useState<DemandSource>({})
-  const [bomData, setBomData] = useState<BOMItem[]>([])
-  const [shopifySkuSet, setShopifySkuSet] = useState<Set<string>>(new Set())
+  const {
+    internalStockItems,
+    salesBySku,
+    assemblyByComponentSku,
+    bomData,
+    shopifySkuSet,
+    phase1Loading,
+    phase2Loading,
+    error,
+    load,
+    refresh,
+  } = useInventoryData()
 
-  // Phase 1 = fast data (stock + sales + SKUs), Phase 2 = slow data (assemblies + BOMs)
-  const [phase1Loading, setPhase1Loading] = useState(true)
-  const [phase2Loading, setPhase2Loading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [showZeroStock, setShowZeroStock] = useState(false)
   const [showOnlyWithCwStock, setShowOnlyWithCwStock] = useState(false)
   const PAGE_SIZE = 50
 
   useEffect(() => {
-    setPhase1Loading(true)
-    setPhase2Loading(true)
-    setError(null)
-
-    // #region agent log
-    const _fetchStart = Date.now();
-    fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1840fa'},body:JSON.stringify({sessionId:'1840fa',location:'page.tsx:useEffect',message:'Starting progressive fetch',data:{},timestamp:_fetchStart,hypothesisId:'H-ALL'})}).catch(()=>{});
-    // #endregion
-
-    // --- PHASE 1: Fast data (stock + sales + Shopify SKUs) ---
-    Promise.all([
-      fetch("/api/unleashed/internal-stock").then((res) =>
-        res.json().then((body) => ({ ok: res.ok, body }))
-      ),
-      fetch("/api/unleashed/sales-trend").then((res) =>
-        res.json().then((body) => ({ ok: res.ok, body }))
-      ),
-      loadShopifySkus(),
-    ])
-      .then(([stockRes, salesRes, skuSet]) => {
-        // #region agent log
-        fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1840fa'},body:JSON.stringify({sessionId:'1840fa',location:'page.tsx:phase1:done',message:'Phase 1 done',data:{durationMs:Date.now()-_fetchStart,stockOk:stockRes.ok,salesOk:salesRes.ok,skuSetSize:skuSet.size},timestamp:Date.now(),hypothesisId:'H-ALL'})}).catch(()=>{});
-        // #endregion
-        if (!stockRes.ok)
-          throw new Error(
-            stockRes.body?.detail || stockRes.body?.error || "Failed stock fetch"
-          )
-        if (!salesRes.ok)
-          throw new Error(
-            salesRes.body?.detail || salesRes.body?.error || "Failed sales fetch"
-          )
-
-        setInternalStockItems(
-          Array.isArray(stockRes.body?.items) ? stockRes.body.items : []
-        )
-        setSalesBySku(salesRes.body?.bySku ?? {})
-        setShopifySkuSet(skuSet)
-        setPhase1Loading(false)
-      })
-      .catch((err: unknown) => {
-        const message =
-          err instanceof Error ? err.message : "Failed to load inventory data."
-        setError(message)
-        setPhase1Loading(false)
-      })
-
-    // --- PHASE 2: Slow data (assemblies + BOMs) -- fetched in parallel, non-blocking ---
-    Promise.all([
-      fetch("/api/unleashed/assembly-trend").then((res) =>
-        res.json().then((body) => ({ ok: res.ok, body }))
-      ),
-      fetch("/api/unleashed/boms").then((res) =>
-        res.json().then((body) => ({ ok: res.ok, body }))
-      ),
-    ])
-      .then(([assemblyRes, bomRes]) => {
-        // #region agent log
-        fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1840fa'},body:JSON.stringify({sessionId:'1840fa',location:'page.tsx:phase2:done',message:'Phase 2 done',data:{durationMs:Date.now()-_fetchStart,assemblyOk:assemblyRes.ok,bomCount:bomRes.body?.Items?.length??0,componentCount:assemblyRes.body?.byComponentSku?Object.keys(assemblyRes.body.byComponentSku).length:0},timestamp:Date.now(),hypothesisId:'H-ALL'})}).catch(()=>{});
-        // #endregion
-        if (assemblyRes.ok) {
-          setAssemblyByComponentSku(assemblyRes.body?.byComponentSku ?? {})
-        }
-        if (bomRes.ok) {
-          const items = Array.isArray(bomRes.body?.Items)
-            ? bomRes.body.Items
-            : []
-          setBomData(items)
-        }
-      })
-      .catch((err) => {
-        console.warn("[phase2] Enhancement fetch failed, table shows sales-only demand:", err)
-      })
-      .finally(() => setPhase2Loading(false))
-  }, [])
+    load()
+  }, [load])
 
   const loading = phase1Loading || phase2Loading
 
@@ -426,6 +351,19 @@ export default function DashboardPage() {
                   onDemandTypeFilterChange={setDemandTypeFilter}
                 />
                 <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={refresh}
+                    disabled={loading}
+                    className="gap-1.5"
+                    title="Fetch fresh data from Unleashed (clears session cache)"
+                  >
+                    <RefreshCw
+                      className={`size-3.5 ${loading ? "animate-spin" : ""}`}
+                    />
+                    Refresh
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
