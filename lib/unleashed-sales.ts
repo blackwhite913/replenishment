@@ -4,6 +4,7 @@ const UNLEASHED_BASE = "https://api.unleashedsoftware.com"
 const PAGE_SIZE = 1000
 const TTL_MS = 6 * 60 * 60 * 1000 // 6 hours
 const DAYS_RANGE = 90
+const FETCH_TIMEOUT_MS = 55_000
 
 interface UnleashedPagination {
   NumberOfPages?: number
@@ -48,6 +49,23 @@ let backgroundRefreshPromise: Promise<void> | null = null
 
 function getSignature(queryString: string, apiKey: string): string {
   return createHmac("sha256", apiKey).update(queryString, "utf8").digest("base64")
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal })
+    return res
+  } catch (err) {
+    throw err
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 function isServiceSku(code: string): boolean {
@@ -117,7 +135,7 @@ async function fetchInvoicesPage(
     "client-type": "stockpilot/replenishment",
   }
 
-  const res = await fetch(url, { headers, cache: "no-store" })
+  const res = await fetchWithTimeout(url, { headers, cache: "no-store" })
   if (!res.ok) {
     const detail = await res.text()
     throw new Error(`Unleashed /Invoices page ${page} failed (${res.status}): ${detail}`)
@@ -188,12 +206,7 @@ function aggregateInvoices(
 }
 
 async function buildSalesTrend(apiId: string, apiKey: string): Promise<SalesTrendResult> {
-  const start = Date.now()
   const { startDate, endDate } = getDateRange()
-
-  // #region agent log
-  fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c7b019'},body:JSON.stringify({sessionId:'c7b019',location:'unleashed-sales.ts:buildSalesTrend',message:'Starting invoice fetch',data:{startDate,endDate},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-  // #endregion
 
   const firstPage = await fetchInvoicesPageWithRetry(1, startDate, endDate, apiId, apiKey)
   const items: UnleashedInvoice[] = [...(firstPage.Items ?? [])]
@@ -211,23 +224,7 @@ async function buildSalesTrend(apiId: string, apiKey: string): Promise<SalesTren
     }
   }
 
-  // #region agent log
-  const fetchEnd = Date.now()
-  fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c7b019'},body:JSON.stringify({sessionId:'c7b019',location:'unleashed-sales.ts:buildSalesTrend',message:'Fetch complete',data:{durationMs:fetchEnd-start,invoiceCount:items.length,pages:numberOfPages},timestamp:fetchEnd,hypothesisId:'H2'})}).catch(()=>{});
-  // #endregion
-
-  const aggStart = Date.now()
   const { last90Days, total90Days, bySku } = aggregateInvoices(items, startDate, endDate)
-
-  // #region agent log
-  fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c7b019'},body:JSON.stringify({sessionId:'c7b019',location:'unleashed-sales.ts:buildSalesTrend',message:'Aggregation complete',data:{durationMs:Date.now()-aggStart,total90Days,skuCount:Object.keys(bySku).length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-  // #endregion
-  const durationMs = Date.now() - start
-
-  console.log(
-    `[unleashed-sales] durationMs=${durationMs} invoices=${items.length} pages=${numberOfPages} total90Days=${total90Days} skus=${Object.keys(bySku).length}`
-  )
-
   return {
     last90Days,
     total90Days,
@@ -249,16 +246,10 @@ export async function getSalesTrend(forceRefresh = false): Promise<SalesTrendRes
 
   const now = Date.now()
   if (!forceRefresh && cache && now - cache.lastUpdated < TTL_MS) {
-    // #region agent log
-    fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c7b019'},body:JSON.stringify({sessionId:'c7b019',location:'unleashed-sales.ts:getSalesTrend',message:'Cache hit',data:{lastUpdated:cache.lastUpdated},timestamp:now,hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
     return cache
   }
 
   if (refreshPromise && !forceRefresh) {
-    // #region agent log
-    fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c7b019'},body:JSON.stringify({sessionId:'c7b019',location:'unleashed-sales.ts:getSalesTrend',message:'Awaiting refreshPromise',timestamp:now,hypothesisId:'H4'})}).catch(()=>{});
-    // #endregion
     return refreshPromise
   }
 

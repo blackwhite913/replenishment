@@ -1,15 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Package, AlertTriangle, Eye, Warehouse, Info } from "lucide-react"
 import type { SkuItem } from "@/lib/placeholder-data"
-import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import {
-  getCwProductsCached,
-  invalidateCwProductsCache,
-} from "@/lib/cw-products-client-cache"
 
 const SPARKLINE_HEIGHTS = [40, 65, 30, 80, 55, 70, 45, 90, 60, 35, 75, 50]
 
@@ -22,49 +16,7 @@ export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
   const totalSkus = totalSkuCount ?? data.length
   const atRisk = data.filter((d) => d.status === "oosRisk").length
   const monitoring = data.filter((d) => d.status === "monitoring").length
-
-  const [stockOnHand, setStockOnHand] = useState<{
-    loading: boolean
-    error: boolean
-    timeout: boolean
-    total: number | null
-  }>({ loading: true, error: false, timeout: false, total: null })
-  const [retryKey, setRetryKey] = useState(0)
-
-  useEffect(() => {
-    let cancelled = false
-    setStockOnHand({ loading: true, error: false, timeout: false, total: null })
-
-    const timeoutMs = 30_000
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), timeoutMs)
-    )
-
-    Promise.race([getCwProductsCached(), timeoutPromise])
-      .then((body) => {
-        if (cancelled) return
-        setStockOnHand({
-          loading: false,
-          error: false,
-          timeout: false,
-          total: body.totalQtyOnHand ?? null,
-        })
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        const isTimeout = err instanceof Error && err.message === "timeout"
-        setStockOnHand({
-          loading: false,
-          error: true,
-          timeout: isTimeout,
-          total: null,
-        })
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [retryKey])
+  const totalThreePlStock = data.reduce((sum, row) => sum + (row.thirdPlStock ?? 0), 0)
 
   const cards = [
     {
@@ -98,7 +50,7 @@ export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
     },
     {
       label: "3PL Stock",
-      value: "",
+      value: totalThreePlStock.toLocaleString(),
       subtitle: undefined as string | undefined,
       icon: Warehouse,
       accentColor: "from-blue-500/20 to-blue-500/5",
@@ -110,19 +62,6 @@ export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => {
-        const displayValue =
-          card.label === "3PL Stock"
-            ? stockOnHand.loading
-              ? null
-              : stockOnHand.timeout
-                ? "Timeout"
-                : stockOnHand.error
-                  ? "Error"
-                  : stockOnHand.total !== null
-                    ? stockOnHand.total.toLocaleString()
-                    : "\u2014"
-            : card.value
-
         const cardContent = (
           <>
             {/* Background accent glow */}
@@ -148,33 +87,12 @@ export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
                   </span>
                 </p>
                 <p className="text-2xl font-bold tracking-tight text-foreground">
-                  {card.label === "3PL Stock" && stockOnHand.loading ? (
-                    <span className="inline-flex items-center gap-2 text-base font-medium text-muted-foreground">
-                      <Spinner className="size-4 text-primary/70" />
-                      Loading
-                    </span>
-                  ) : (
-                    displayValue
-                  )}
+                  {card.value}
                 </p>
                 {card.label === "Analyzed SKUs" && card.subtitle && (
                   <p className="text-[10px] text-muted-foreground/70 mt-0.5">
                     {card.subtitle}
                   </p>
-                )}
-                {card.label === "3PL Stock" && stockOnHand.error && (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      invalidateCwProductsCache()
-                      setRetryKey((value) => value + 1)
-                    }}
-                    className="mt-1 text-[10px] font-medium text-primary underline underline-offset-2"
-                  >
-                    Retry
-                  </button>
                 )}
               </div>
               <div className={`flex size-10 items-center justify-center rounded-xl bg-secondary/80 ${card.iconColor} transition-transform group-hover:scale-110`}>

@@ -20,6 +20,8 @@ import type { SkuItem } from "@/lib/placeholder-data"
 interface RiskTableProps {
   data: SkuItem[]
   onRowClick: (sku: SkuItem) => void
+  /** Shown under the default empty message when filters exclude every row but data exists */
+  filterEmptyHint?: string
 }
 
 function StatusBadge({ status }: { status: SkuItem["status"] }) {
@@ -102,7 +104,7 @@ function DaysCoverValue({
   )
 }
 
-export function RiskTable({ data, onRowClick }: RiskTableProps) {
+export function RiskTable({ data, onRowClick, filterEmptyHint }: RiskTableProps) {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="overflow-auto max-h-[calc(100vh-340px)] min-h-[200px]">
@@ -144,9 +146,16 @@ export function RiskTable({ data, onRowClick }: RiskTableProps) {
               <TableRow>
                 <TableCell
                   colSpan={10}
-                  className="h-24 text-center text-muted-foreground"
+                  className="h-24 px-6 text-center text-muted-foreground"
                 >
-                  No SKUs match the current filters.
+                  <div className="flex flex-col items-center gap-1.5">
+                    <span>No SKUs match the current filters.</span>
+                    {filterEmptyHint ? (
+                      <span className="max-w-md text-xs text-muted-foreground/90">
+                        {filterEmptyHint}
+                      </span>
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (

@@ -3,12 +3,13 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { InventoryDataProvider } from '@/components/providers/inventory-data-provider'
+import { AuthSessionProvider } from '@/components/providers/session-provider'
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'NAB Replenishment Dashboard',
+  title: 'stock-ly Dashboard',
   description: 'Monitor inventory and identify SKUs that need replenishment from 3PL to Shop based on lead time and stock coverage.',
   generator: 'v0.app',
   icons: {
@@ -38,7 +39,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="font-sans antialiased">
-        <InventoryDataProvider>{children}</InventoryDataProvider>
+        <AuthSessionProvider>
+          <InventoryDataProvider>{children}</InventoryDataProvider>
+        </AuthSessionProvider>
         <Analytics />
       </body>
     </html>

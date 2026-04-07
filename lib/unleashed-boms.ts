@@ -3,6 +3,7 @@ import { createHmac } from "crypto"
 const UNLEASHED_BASE = "https://api.unleashedsoftware.com"
 const PAGE_SIZE = 200
 const TTL_MS = 6 * 60 * 60 * 1000 // 6 hours
+const FETCH_TIMEOUT_MS = 15_000
 
 interface UnleashedPagination {
   NumberOfPages?: number
@@ -25,6 +26,20 @@ function getSignature(queryString: string, apiKey: string): string {
   return createHmac("sha256", apiKey).update(queryString, "utf8").digest("base64")
 }
 
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 async function fetchBomPage(
   page: number,
   apiId: string,
@@ -43,7 +58,7 @@ async function fetchBomPage(
     "client-type": "stockpilot/replenishment",
   }
 
-  const res = await fetch(url, { headers, cache: "no-store" })
+  const res = await fetchWithTimeout(url, { headers, cache: "no-store" })
   if (!res.ok) {
     const detail = await res.text()
     throw new Error(`Unleashed /BillOfMaterials page ${page} failed (${res.status}): ${detail}`)
@@ -55,7 +70,6 @@ async function fetchAllBomPages(
   apiId: string,
   apiKey: string
 ): Promise<BomCacheResult> {
-  const start = Date.now()
   const firstPage = await fetchBomPage(1, apiId, apiKey)
   const allItems: Record<string, unknown>[] = [...(firstPage.Items ?? [])]
   const numberOfPages = firstPage.Pagination?.NumberOfPages ?? 1
@@ -69,11 +83,6 @@ async function fetchAllBomPages(
       allItems.push(...(page.Items ?? []))
     }
   }
-
-  const durationMs = Date.now() - start
-  console.log(
-    `[unleashed-boms] durationMs=${durationMs} boms=${allItems.length} pages=${numberOfPages}`
-  )
 
   return { items: allItems, lastUpdated: Date.now() }
 }

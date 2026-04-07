@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/auth"
 import { getSalesTrend } from "@/lib/unleashed-sales"
 
+export const maxDuration = 60
+
 export async function GET(request: NextRequest) {
-  // #region agent log
-  const routeStart = Date.now()
-  fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c7b019'},body:JSON.stringify({sessionId:'c7b019',location:'sales-trend/route.ts',message:'GET request received',timestamp:routeStart,hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
+  const session = await auth()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
 
   const apiId = process.env.UNLEASHED_API_ID
   const apiKey = process.env.UNLEASHED_API_KEY
@@ -21,10 +24,6 @@ export async function GET(request: NextRequest) {
 
   try {
     const result = await getSalesTrend(forceRefresh)
-
-    // #region agent log
-    fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c7b019'},body:JSON.stringify({sessionId:'c7b019',location:'sales-trend/route.ts',message:'GET completed',data:{durationMs:Date.now()-routeStart,sku:sku||'overall'},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
 
     if (sku && result.bySku?.[sku]) {
       const skuData = result.bySku[sku]

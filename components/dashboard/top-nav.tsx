@@ -1,6 +1,7 @@
 "use client"
 
 import { Input } from "@/components/ui/input"
+import { MobileNav } from "@/components/dashboard/mobile-nav"
 
 interface TopNavProps {
   leadTime: number
@@ -14,13 +15,16 @@ export function TopNav({
   return (
     <header className="border-b border-border bg-card/50 backdrop-blur-sm">
       <div className="flex flex-col gap-4 px-6 py-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground tracking-tight">
-            NAB Replenishment Dashboard
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            NAB Inventory Replenishment Pilot
-          </p>
+        <div className="flex items-start gap-3">
+          <MobileNav />
+          <div>
+            <h1 className="text-xl font-bold text-foreground tracking-tight">
+              stock-ly Dashboard
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              stock-ly Inventory Replenishment
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

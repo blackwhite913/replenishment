@@ -2,11 +2,12 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { signOut, useSession } from "next-auth/react"
 import {
   LayoutDashboard,
   TrendingUp,
   Truck,
-  ChevronDown,
+  LogOut,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -21,8 +22,32 @@ const navItems = [
   { icon: Truck, label: "Transfers", href: "/", pathMatch: "/transfers" },
 ]
 
+function initialsFromUser(
+  name: string | null | undefined,
+  email: string | null | undefined
+) {
+  if (name?.trim()) {
+    const parts = name.trim().split(/\s+/)
+    if (parts.length >= 2) {
+      return `${parts[0]![0]!}${parts[parts.length - 1]![0]!}`.toUpperCase()
+    }
+    return name.slice(0, 2).toUpperCase()
+  }
+  if (email) return email.slice(0, 2).toUpperCase()
+  return "?"
+}
+
 export function Sidebar() {
   const pathname = usePathname()
+  const { data: session, status } = useSession()
+  const user = session?.user
+  const label =
+    status === "loading"
+      ? "…"
+      : user?.name || user?.email?.split("@")[0] || "Signed in"
+  const sublabel =
+    status === "loading" ? "Loading" : user?.email ?? ""
+
   return (
     <aside className="hidden lg:flex flex-col w-[220px] shrink-0 border-r border-border bg-sidebar min-h-screen">
       {/* Logo */}
@@ -43,7 +68,7 @@ export function Sidebar() {
           </svg>
         </div>
         <span className="text-sm font-bold tracking-tight text-foreground">
-          NAB Pilot
+          stock-ly
         </span>
       </div>
 
@@ -83,16 +108,23 @@ export function Sidebar() {
 
       {/* User */}
       <div className="border-t border-border px-3 py-3">
-        <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-accent">
-          <div className="flex size-8 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">
-            OP
+        <div className="flex w-full items-center gap-3 rounded-lg px-3 py-2">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">
+            {initialsFromUser(user?.name, user?.email)}
           </div>
-          <div className="flex-1 text-left">
-            <p className="text-xs font-medium text-foreground">Ops Manager</p>
-            <p className="text-[10px] text-muted-foreground">Admin</p>
+          <div className="min-w-0 flex-1 text-left">
+            <p className="truncate text-xs font-medium text-foreground">{label}</p>
+            <p className="truncate text-[10px] text-muted-foreground">{sublabel}</p>
           </div>
-          <ChevronDown className="size-3.5 text-muted-foreground" />
-        </button>
+          <button
+            type="button"
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Sign out"
+          >
+            <LogOut className="size-4" />
+          </button>
+        </div>
       </div>
     </aside>
   )

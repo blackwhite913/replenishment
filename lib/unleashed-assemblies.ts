@@ -4,6 +4,7 @@ const UNLEASHED_BASE = "https://api.unleashedsoftware.com"
 const PAGE_SIZE = 1000
 const TTL_MS = 6 * 60 * 60 * 1000 // 6 hours
 const DAYS_RANGE = 90
+const FETCH_TIMEOUT_MS = 15_000
 
 interface UnleashedPagination {
   NumberOfPages?: number
@@ -50,6 +51,23 @@ let backgroundRefreshPromise: Promise<void> | null = null
 
 function getSignature(queryString: string, apiKey: string): string {
   return createHmac("sha256", apiKey).update(queryString, "utf8").digest("base64")
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal })
+    return res
+  } catch (err) {
+    throw err
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 function parseApiDate(str: string | undefined): string | null {
@@ -115,7 +133,7 @@ async function fetchAssembliesPage(
     "client-type": "stockpilot/replenishment",
   }
 
-  const res = await fetch(url, { headers, cache: "no-store" })
+  const res = await fetchWithTimeout(url, { headers, cache: "no-store" })
   if (!res.ok) {
     const detail = await res.text()
     throw new Error(
@@ -139,18 +157,12 @@ async function fetchAssembliesPageWithRetry(
   }
 }
 
-const DEBUG_SKU = "F&B-CHA-70CL-MOE"
-
 function aggregateAssemblies(
   assemblies: UnleashedAssembly[],
   startDate: string,
   endDate: string
 ): AssemblyTrendResult["byComponentSku"] {
   const bySkuDaily = new Map<string, Map<string, number>>()
-
-  // #region agent log
-  fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d97952'},body:JSON.stringify({sessionId:'d97952',location:'unleashed-assemblies.ts:aggregateAssemblies:entry',message:'Starting aggregation',data:{totalAssemblies:assemblies.length,startDate,endDate},timestamp:Date.now(),hypothesisId:'H1-H4'})}).catch(()=>{});
-  // #endregion
 
   for (const assembly of assemblies) {
     const assemblyDate = parseApiDate(assembly.AssemblyDate)
@@ -177,12 +189,6 @@ function aggregateAssemblies(
       // assembly run, not a per-unit BOM quantity. Do NOT multiply by assemblyQty.
       const consumedUnits = lineQty
 
-      // #region agent log
-      if (componentSku === DEBUG_SKU) {
-        fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d97952'},body:JSON.stringify({sessionId:'d97952',location:'unleashed-assemblies.ts:aggregateAssemblies:lineCalc',message:'Assembly line calc for debug SKU',data:{sku:componentSku,assemblyDate,assemblyStatus:assembly.AssemblyStatus,assemblyQty,lineQty,consumedUnits},timestamp:Date.now(),runId:'post-fix',hypothesisId:'H1'})}).catch(()=>{});
-      }
-      // #endregion
-
       let skuMap = bySkuDaily.get(componentSku)
       if (!skuMap) {
         skuMap = new Map()
@@ -197,13 +203,6 @@ function aggregateAssemblies(
     const last90Days = build90DayBuckets(startDate, skuDaily)
     const total90Days = last90Days.reduce((sum, p) => sum + p.units, 0)
     byComponentSku[sku] = { last90Days, total90Days }
-
-    // #region agent log
-    if (sku === DEBUG_SKU) {
-      const dailyBreakdown = Array.from(skuDaily.entries()).map(([d,u])=>({date:d,units:u}))
-      fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d97952'},body:JSON.stringify({sessionId:'d97952',location:'unleashed-assemblies.ts:aggregateAssemblies:summary',message:'Final ASM total for debug SKU',data:{sku,total90Days,dailyBreakdown},timestamp:Date.now(),runId:'post-fix',hypothesisId:'H1'})}).catch(()=>{});
-    }
-    // #endregion
   }
   return byComponentSku
 }
@@ -212,7 +211,6 @@ async function buildAssemblyTrend(
   apiId: string,
   apiKey: string
 ): Promise<AssemblyTrendResult> {
-  const start = Date.now()
   const { startDate, endDate } = getDateRange()
 
   const firstPage = await fetchAssembliesPageWithRetry(
@@ -240,17 +238,7 @@ async function buildAssemblyTrend(
     }
   }
 
-  // #region agent log
-  const assemblyNumbers = items.map((a) => a.AssemblyNumber).filter(Boolean)
-  const uniqueAssemblyNumbers = new Set(assemblyNumbers)
-  fetch('http://127.0.0.1:7912/ingest/55bfa669-1c28-47a7-822a-5e1e23521f36',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d97952'},body:JSON.stringify({sessionId:'d97952',location:'unleashed-assemblies.ts:buildAssemblyTrend:dedupe-check',message:'Pagination dedup check',data:{totalItems:items.length,uniqueAssemblyNumbers:uniqueAssemblyNumbers.size,hasDuplicates:assemblyNumbers.length!==uniqueAssemblyNumbers.size},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-  // #endregion
-
   const byComponentSku = aggregateAssemblies(items, startDate, endDate)
-  const durationMs = Date.now() - start
-  console.log(
-    `[unleashed-assemblies] durationMs=${durationMs} assemblies=${items.length} pages=${numberOfPages} components=${Object.keys(byComponentSku).length}`
-  )
 
   return {
     byComponentSku,

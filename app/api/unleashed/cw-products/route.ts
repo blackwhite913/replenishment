@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server"
+import { auth } from "@/auth"
 import { getCwInventory } from "@/lib/cw-inventory"
 
 export async function GET() {
+  const session = await auth()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
   const apiId = process.env.UNLEASHED_API_ID
   const apiKey = process.env.UNLEASHED_API_KEY
   if (!apiId || !apiKey) {

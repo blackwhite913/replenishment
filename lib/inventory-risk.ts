@@ -278,15 +278,6 @@ export function buildUnifiedDataset({
       bomParents: info.bomParents,
     })
 
-    if (process.env.NODE_ENV === "development") {
-      console.log({
-        sku,
-        salesDemand,
-        assemblyDemand,
-        totalDemand,
-        demandType,
-      })
-    }
   }
 
   return { items, demandTrendBySku }

@@ -4,6 +4,7 @@ import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { SalesTrendChart } from "@/components/dashboard/sales-trend-chart"
+import { MobileNav } from "@/components/dashboard/mobile-nav"
 
 export default function ForecastingPage() {
   return (
@@ -13,6 +14,7 @@ export default function ForecastingPage() {
       <div className="flex flex-1 flex-col min-w-0">
         <header className="border-b border-border bg-card/50 backdrop-blur-sm">
           <div className="flex items-center gap-3 px-6 py-3">
+            <MobileNav />
             <Link
               href="/"
               className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"

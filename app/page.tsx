@@ -250,15 +250,6 @@ export default function DashboardPage() {
     showOnlyWithCwStock,
   ])
 
-  useEffect(() => {
-    console.log("[SKU Count Debug]", {
-      totalSkusCard: tableData.length,
-      totalRowsTable: filteredData.length,
-      showZeroStockEnabled: showZeroStock,
-      filteredDatasetLength: filteredData.length,
-    })
-  }, [tableData.length, filteredData.length, showZeroStock])
-
   const paginatedData = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE
     return filteredData.slice(start, start + PAGE_SIZE)
@@ -294,7 +285,7 @@ export default function DashboardPage() {
 
         <main className="flex-1 p-5 lg:p-6 overflow-y-auto">
           <div className="flex flex-col gap-5 max-w-[1440px]">
-            <KpiCards data={filteredData} totalSkuCount={tableData.length} />
+            <KpiCards data={tableData} totalSkuCount={tableData.length} />
             <p className="text-xs text-muted-foreground -mt-1">
               {shopifySkuSet.size.toLocaleString()} total Shopify SKUs ·{" "}
               {tableData.length.toLocaleString()} analyzed
@@ -452,7 +443,15 @@ export default function DashboardPage() {
                       </div>
                     )}
                   </div>
-                  <RiskTable data={paginatedData} onRowClick={handleRowClick} />
+                  <RiskTable
+                    data={paginatedData}
+                    onRowClick={handleRowClick}
+                    filterEmptyHint={
+                      filteredData.length === 0 && tableData.length > 0
+                        ? "Your dataset has loaded, but nothing passes the filters above—for example, Status “Healthy” only shows SKUs with stock well above the reorder point. Try “All Statuses” or adjust Product Type / Demand / stock options."
+                        : undefined
+                    }
+                  />
                 </>
               )}
             </div>

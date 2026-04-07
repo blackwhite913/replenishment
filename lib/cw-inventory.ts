@@ -4,6 +4,7 @@ const UNLEASHED_BASE = "https://api.unleashedsoftware.com"
 const PAGE_SIZE = 200
 const TTL_MS = 300_000
 const CW_WAREHOUSE_CODE = "CWL_001"
+const FETCH_TIMEOUT_MS = 15_000
 
 interface UnleashedPagination {
   NumberOfPages?: number
@@ -57,6 +58,20 @@ function getSignature(queryString: string, apiKey: string): string {
   return createHmac("sha256", apiKey).update(queryString, "utf8").digest("base64")
 }
 
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 async function fetchCwStockPage(page: number, apiId: string, apiKey: string) {
   const today = new Date().toISOString().slice(0, 10)
   const warehouseCode = process.env.CW_WAREHOUSE_CODE || CW_WAREHOUSE_CODE
@@ -77,7 +92,7 @@ async function fetchCwStockPage(page: number, apiId: string, apiKey: string) {
     "client-type": "stockpilot/replenishment",
   }
 
-  const res = await fetch(url, { headers, cache: "no-store" })
+  const res = await fetchWithTimeout(url, { headers, cache: "no-store" })
   if (!res.ok) {
     const detail = await res.text()
     throw new Error(
@@ -89,7 +104,6 @@ async function fetchCwStockPage(page: number, apiId: string, apiKey: string) {
 
 async function buildCwInventory(apiId: string, apiKey: string): Promise<CwInventoryResult> {
   const start = Date.now()
-
   const firstPage = await fetchCwStockPage(1, apiId, apiKey)
   const firstPageItems = firstPage.Items ?? firstPage.StockOnHand ?? []
   const numberOfPages = firstPage.Pagination?.NumberOfPages ?? 1
@@ -127,11 +141,6 @@ async function buildCwInventory(apiId: string, apiKey: string): Promise<CwInvent
 
   const totalQtyOnHand = rows.reduce((sum, row) => sum + row.qtyOnHand, 0)
   const durationMs = Date.now() - start
-
-  console.log(
-    `[cw-inventory] durationMs=${durationMs} pagesFetched=${pagesScanned} sohItems=${allItems.length} cwRowsWithStock=${rows.length} totalQtyOnHand=${totalQtyOnHand}`
-  )
-
   return {
     items: rows,
     totalQtyOnHand,
@@ -162,12 +171,18 @@ export async function getCwInventory(): Promise<CwInventoryResult> {
     return refreshPromise
   }
 
-  refreshPromise = buildCwInventory(apiId, apiKey).then((result) => {
-    cache = result
-    cacheLastUpdated = result.lastUpdated
-    refreshPromise = null
-    return result
-  })
+  refreshPromise = buildCwInventory(apiId, apiKey)
+    .then((result) => {
+      cache = result
+      cacheLastUpdated = result.lastUpdated
+      refreshPromise = null
+      return result
+    })
+    .catch((err) => {
+      refreshPromise = null
+      if (cache) return cache
+      throw err
+    })
 
   return refreshPromise
 }

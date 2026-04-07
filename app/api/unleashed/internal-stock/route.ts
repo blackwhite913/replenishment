@@ -1,11 +1,15 @@
 import { createHmac } from "crypto"
 import { NextResponse } from "next/server"
+import { auth } from "@/auth"
 import { getShopifySkuSet } from "@/lib/shopify-skus"
 import { getCwInventory } from "@/lib/cw-inventory"
 
 const UNLEASHED_BASE = "https://api.unleashedsoftware.com"
 const PAGE_SIZE = 200
 const TTL_MS = 300_000
+const FETCH_TIMEOUT_MS = 55_000
+
+export const maxDuration = 60
 
 interface UnleashedPagination {
   NumberOfPages?: number
@@ -45,6 +49,23 @@ function getSignature(queryString: string, apiKey: string): string {
   return createHmac("sha256", apiKey).update(queryString, "utf8").digest("base64")
 }
 
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal })
+    return res
+  } catch (err) {
+    throw err
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 async function fetchStockPage(
   page: number,
   warehouseCode: string,
@@ -69,7 +90,7 @@ async function fetchStockPage(
     "client-type": "stockpilot/replenishment",
   }
 
-  const res = await fetch(url, { headers, cache: "no-store" })
+  const res = await fetchWithTimeout(url, { headers, cache: "no-store" })
   if (!res.ok) {
     const detail = await res.text()
     throw new Error(
@@ -130,7 +151,7 @@ async function fetchStockPageAllWarehouses(
     "client-type": "stockpilot/replenishment",
   }
 
-  const res = await fetch(url, { headers, cache: "no-store" })
+  const res = await fetchWithTimeout(url, { headers, cache: "no-store" })
   if (!res.ok) {
     const detail = await res.text()
     throw new Error(
@@ -225,6 +246,11 @@ let cache: { items: InternalStockItem[]; lastUpdated: number } | null = null
 let refreshPromise: Promise<InternalStockItem[]> | null = null
 
 export async function GET() {
+  const session = await auth()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
   const apiId = process.env.UNLEASHED_API_ID
   const apiKey = process.env.UNLEASHED_API_KEY
   if (!apiId || !apiKey) {
@@ -326,7 +352,6 @@ export async function GET() {
         }))
 
         cache = { items, lastUpdated: Date.now() }
-        console.log("Internal stock loaded:", items.length)
         return items
       } finally {
         refreshPromise = null
