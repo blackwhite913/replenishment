@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { TopNav } from "@/components/dashboard/top-nav"
 import { KpiCards } from "@/components/dashboard/kpi-cards"
@@ -12,12 +12,10 @@ import { Spinner } from "@/components/ui/spinner"
 import { Button } from "@/components/ui/button"
 import { Download, RefreshCw } from "lucide-react"
 import { useInventoryData } from "@/components/providers/inventory-data-provider"
-import {
-  buildUnifiedDataset,
-  buildBomVisibilityMap,
-  classifySkus,
-} from "@/lib/inventory-risk"
-import type { DemandDayPoint } from "@/lib/bom-demand"
+
+// ---------------------------------------------------------------------------
+// CSV exports
+// ---------------------------------------------------------------------------
 
 function exportToCSV(rows: SkuItem[]) {
   const headers = [
@@ -35,7 +33,7 @@ function exportToCSV(rows: SkuItem[]) {
     "Demand Type",
     "Is Component",
   ]
-  const escape = (v: string | number | boolean | undefined) =>
+  const escape = (v: string | number | boolean | null | undefined) =>
     `"${String(v ?? "").replace(/"/g, '""')}"`
   const csvRows = [
     headers.join(","),
@@ -63,7 +61,7 @@ function exportToCSV(rows: SkuItem[]) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
   a.href = url
-  a.download = `nab_inventory_risk_snapshot_${new Date().toISOString().slice(0, 10)}.csv`
+  a.download = `stockly_inventory_risk_${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -71,32 +69,33 @@ function exportToCSV(rows: SkuItem[]) {
 interface BomParentExportRow {
   sku: string
   productName: string
-  componentCount: number
-  bomLineCount: number
+  bomParentCount: number
 }
 
 function exportBomParentsToCSV(rows: BomParentExportRow[]) {
-  const headers = ["SKU", "Product Name", "Component Count", "BOM Line Count"]
+  const headers = ["SKU", "Product Name", "Used In BOMs"]
   const escape = (v: string | number | boolean | undefined) =>
     `"${String(v ?? "").replace(/"/g, '""')}"`
-
   const csvRows = [
     headers.join(","),
     ...rows.map((row) =>
-      [row.sku, row.productName, row.componentCount, row.bomLineCount]
-        .map(escape)
-        .join(",")
+      [row.sku, row.productName, row.bomParentCount].map(escape).join(",")
     ),
   ].join("\n")
-
   const blob = new Blob([csvRows], { type: "text/csv;charset=utf-8;" })
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
   a.href = url
-  a.download = `nab_bom_parents_${new Date().toISOString().slice(0, 10)}.csv`
+  a.download = `stockly_bom_parents_${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
+const PAGE_SIZE = 50
 
 export default function DashboardPage() {
   const [leadTime, setLeadTime] = useState(3)
@@ -106,112 +105,66 @@ export default function DashboardPage() {
   const [demandTypeFilter, setDemandTypeFilter] = useState("all")
   const [selectedSku, setSelectedSku] = useState<SkuItem | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
-
-  const {
-    internalStockItems,
-    salesBySku,
-    assemblyByComponentSku,
-    bomData,
-    shopifySkuSet,
-    phase1Loading,
-    phase2Loading,
-    error,
-    load,
-    refresh,
-  } = useInventoryData()
-
   const [page, setPage] = useState(1)
   const [showZeroStock, setShowZeroStock] = useState(false)
   const [showOnlyWithCwStock, setShowOnlyWithCwStock] = useState(false)
-  const PAGE_SIZE = 50
+
+  const { items, bomVisibility, meta, loading, enriching, error, enrichmentErrors, load, refresh } =
+    useInventoryData()
+  const threePlUnavailable = meta?.threePlAvailable === false
+  const provisionalKpis = !meta?.enriched || enriching
+  const dashboardWarnings = useMemo(() => {
+    const warnings: string[] = []
+    if (enrichmentErrors && enrichmentErrors.length > 0) {
+      warnings.push(...enrichmentErrors.map((e) => e.source))
+    }
+    if (threePlUnavailable) warnings.push("3PL")
+    return warnings
+  }, [enrichmentErrors, threePlUnavailable])
 
   useEffect(() => {
-    load()
-  }, [load])
+    load(leadTime)
+  }, [load, leadTime])
 
-  const loading = phase1Loading || phase2Loading
-
-  const { items: tableData, demandTrendBySku } = useMemo(() => {
-    if (phase1Loading || phase2Loading || error) return { items: [], demandTrendBySku: {} }
-    return buildUnifiedDataset({
-      internalStockItems,
-      salesBySku,
-      assemblyByComponentSku,
-      bomData,
-      shopifySkuSet,
-      leadTime,
-    })
-  }, [
-    internalStockItems,
-    salesBySku,
-    assemblyByComponentSku,
-    bomData,
-    shopifySkuSet,
-    leadTime,
-    phase1Loading,
-    phase2Loading,
-    error,
-  ])
-
-  const bomVisibilityMap = useMemo(
-    () => buildBomVisibilityMap(bomData, shopifySkuSet),
-    [bomData, shopifySkuSet]
-  )
-
-  const bomParentExportRows = useMemo(() => {
-    const { bomParentSkus, componentMetaMap, filteredBoms } = classifySkus(
-      bomData,
-      shopifySkuSet
-    )
-
-    const productNameByParent = new Map<string, string>()
-    const bomLineCountByParent = new Map<string, number>()
-    for (const bom of filteredBoms) {
-      const parentSku = bom.Product?.ProductCode?.trim()
-      if (!parentSku) continue
-      productNameByParent.set(
-        parentSku,
-        bom.Product?.ProductDescription?.trim() || parentSku
-      )
-      bomLineCountByParent.set(
-        parentSku,
-        (bom.BillOfMaterialsLines ?? []).length
-      )
+  useEffect(() => {
+    if (threePlUnavailable && showOnlyWithCwStock) {
+      setShowOnlyWithCwStock(false)
     }
+  }, [threePlUnavailable, showOnlyWithCwStock])
 
-    const componentCountByParent = new Map<string, number>()
-    for (const component of componentMetaMap.values()) {
-      for (const parentSku of component.parentSkus) {
-        componentCountByParent.set(
-          parentSku,
-          (componentCountByParent.get(parentSku) ?? 0) + 1
-        )
+  const handleRefresh = useCallback(() => {
+    refresh(leadTime)
+  }, [refresh, leadTime])
+
+  // ---------------------------------------------------------------------------
+  // BOM parents export (derived from items)
+  // ---------------------------------------------------------------------------
+  const bomParentExportRows = useMemo((): BomParentExportRow[] => {
+    const parentMap = new Map<string, { productName: string; count: number }>()
+    for (const item of items) {
+      for (const parentSku of item.bomParents ?? []) {
+        const existing = parentMap.get(parentSku)
+        if (existing) {
+          existing.count += 1
+        } else {
+          parentMap.set(parentSku, { productName: parentSku, count: 1 })
+        }
       }
     }
-
-    return Array.from(bomParentSkus)
-      .sort((a, b) => a.localeCompare(b))
-      .map((sku) => ({
+    return Array.from(parentMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([sku, { productName, count }]) => ({
         sku,
-        productName: productNameByParent.get(sku) ?? sku,
-        componentCount: componentCountByParent.get(sku) ?? 0,
-        bomLineCount: bomLineCountByParent.get(sku) ?? 0,
+        productName,
+        bomParentCount: count,
       }))
-  }, [bomData, shopifySkuSet])
+  }, [items])
 
-  const demandTrendOverrideBySku = useMemo(() => {
-    const map: Record<
-      string,
-      { last90Days: DemandDayPoint[]; total90Days: number }
-    > = {}
-    for (const [sku, entry] of Object.entries(demandTrendBySku)) {
-      map[sku] = { last90Days: entry.last90Days, total90Days: entry.total90Days }
-    }
-    return map
-  }, [demandTrendBySku])
-
+  // ---------------------------------------------------------------------------
+  // Filtering
+  // ---------------------------------------------------------------------------
   const filteredData = useMemo(() => {
-    return tableData.filter((item) => {
+    const result = items.filter((item) => {
       const matchesSearch =
         searchQuery === "" ||
         item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -229,7 +182,9 @@ export default function DashboardPage() {
         demandTypeFilter === "all" || item.demandType === demandTypeFilter
 
       const matchesStock = showZeroStock || item.shopStock > 0
-      const matchesCwStock = !showOnlyWithCwStock || item.thirdPlStock > 0
+      const matchesCwStock =
+        !showOnlyWithCwStock ||
+        ((meta?.threePlAvailable ?? true) && (item.thirdPlStock ?? 0) > 0)
 
       return (
         matchesSearch &&
@@ -240,14 +195,16 @@ export default function DashboardPage() {
         matchesCwStock
       )
     })
+    return result
   }, [
-    tableData,
+    items,
     searchQuery,
     statusFilter,
     productTypeFilter,
     demandTypeFilter,
     showZeroStock,
     showOnlyWithCwStock,
+    meta?.threePlAvailable,
   ])
 
   const paginatedData = useMemo(() => {
@@ -273,22 +230,54 @@ export default function DashboardPage() {
     setPanelOpen(true)
   }
 
+  function handleKpiClick(cardKey: "atRisk" | "monitoring" | "threePl") {
+    if (cardKey === "atRisk") {
+      setStatusFilter("oosRisk")
+    } else if (cardKey === "monitoring") {
+      setStatusFilter("monitoring")
+    } else if (cardKey === "threePl" && !threePlUnavailable) {
+      setShowOnlyWithCwStock(true)
+    }
+    setPage(1)
+  }
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
 
       <div className="flex flex-1 flex-col min-w-0">
-        <TopNav
-          leadTime={leadTime}
-          onLeadTimeChange={setLeadTime}
-        />
+        <TopNav leadTime={leadTime} onLeadTimeChange={setLeadTime} />
 
         <main className="flex-1 p-5 lg:p-6 overflow-y-auto">
           <div className="flex flex-col gap-5 max-w-[1440px]">
-            <KpiCards data={tableData} totalSkuCount={tableData.length} />
+            <KpiCards
+              data={items}
+              totalSkuCount={items.length}
+              provisional={provisionalKpis}
+              threePlAvailable={!threePlUnavailable}
+              onCardClick={handleKpiClick}
+            />
             <p className="text-xs text-muted-foreground -mt-1">
-              {shopifySkuSet.size.toLocaleString()} total Shopify SKUs ·{" "}
-              {tableData.length.toLocaleString()} analyzed
+              {meta ? (
+                <>
+                  {meta.shopifyVariantSkus.toLocaleString()} usable SKUs
+                  {" · "}
+                  {(meta.shopifyRawVariants ?? meta.shopifyVariantSkus).toLocaleString()} total variants
+                  {" · "}{items.length.toLocaleString()} analyzed
+                  {!meta.shopifyReady && (
+                    <span className="ml-2 text-amber-600 dark:text-amber-400">
+                      · SKU catalogue loading
+                    </span>
+                  )}
+                  {threePlUnavailable && (
+                    <span className="ml-2 text-amber-600 dark:text-amber-400">
+                      · 3PL data unavailable
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>&nbsp;</>
+              )}
             </p>
 
             <div className="flex flex-col gap-4">
@@ -299,13 +288,16 @@ export default function DashboardPage() {
                   </h2>
                   <p className="text-xs text-muted-foreground">
                     {loading ? (
-                      "Loading inventory risk data..."
+                      "Loading stock data..."
                     ) : (
                       <>
                         Click any row to view detailed analytics. Showing{" "}
                         <span className="font-semibold text-foreground">
                           {filteredData.length > 0
-                            ? `${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, filteredData.length)}`
+                            ? `${(page - 1) * PAGE_SIZE + 1}–${Math.min(
+                                page * PAGE_SIZE,
+                                filteredData.length
+                              )}`
                             : "0"}
                         </span>{" "}
                         of{" "}
@@ -313,11 +305,6 @@ export default function DashboardPage() {
                           {filteredData.length}
                         </span>{" "}
                         {totalPages > 1 && `(page ${page}/${totalPages})`}
-                        {phase2Loading && (
-                          <span className="ml-2 text-primary/70">
-                            · Enhancing with assembly + BOM data...
-                          </span>
-                        )}
                       </>
                     )}
                   </p>
@@ -345,7 +332,7 @@ export default function DashboardPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={refresh}
+                    onClick={handleRefresh}
                     disabled={loading}
                     className="gap-1.5"
                     title="Fetch fresh data from Unleashed (clears session cache)"
@@ -378,10 +365,7 @@ export default function DashboardPage() {
                 <div className="rounded-xl border border-border bg-card p-12 flex flex-col items-center justify-center gap-4 min-h-[320px]">
                   <Spinner className="size-10 text-primary" />
                   <p className="text-sm font-medium text-muted-foreground">
-                    Loading inventory risk data...
-                  </p>
-                  <p className="text-xs text-muted-foreground/80">
-                    Fetching stock and sales data
+                    Loading stock data...
                   </p>
                 </div>
               ) : error ? (
@@ -390,6 +374,21 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <>
+                  {enriching && (
+                    <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2">
+                      <Spinner className="size-3.5 text-primary" />
+                      <span className="text-xs text-muted-foreground">
+                        Updating demand and supply data...
+                      </span>
+                    </div>
+                  )}
+                  {dashboardWarnings.length > 0 && !enriching && (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2">
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Some data sources were temporarily unreachable. Core stock data is current.
+                      </p>
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-6">
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -407,13 +406,14 @@ export default function DashboardPage() {
                         <input
                           type="checkbox"
                           checked={showOnlyWithCwStock}
+                          disabled={threePlUnavailable}
                           onChange={(e) =>
                             setShowOnlyWithCwStock(e.target.checked)
                           }
                           className="rounded border-border bg-secondary"
                         />
                         <span className="text-xs text-muted-foreground">
-                          Show only items with CW stock
+                          Show only items with CW stock{threePlUnavailable ? " (unavailable)" : ""}
                         </span>
                       </label>
                     </div>
@@ -447,8 +447,8 @@ export default function DashboardPage() {
                     data={paginatedData}
                     onRowClick={handleRowClick}
                     filterEmptyHint={
-                      filteredData.length === 0 && tableData.length > 0
-                        ? "Your dataset has loaded, but nothing passes the filters above—for example, Status “Healthy” only shows SKUs with stock well above the reorder point. Try “All Statuses” or adjust Product Type / Demand / stock options."
+                      filteredData.length === 0 && items.length > 0
+                        ? 'Your dataset has loaded, but nothing passes the filters above. Try "All Statuses" or adjust Product Type / Demand / stock options.'
                         : undefined
                     }
                   />
@@ -464,9 +464,7 @@ export default function DashboardPage() {
         onOpenChange={setPanelOpen}
         selectedSku={selectedSku}
         leadTime={leadTime}
-        demandTrendOverrideBySku={demandTrendOverrideBySku}
-        demandTrendTitle="90-Day Demand Trend (SS + ASM)"
-        bomVisibilityMap={bomVisibilityMap}
+        bomVisibilityMap={bomVisibility}
       />
     </div>
   )

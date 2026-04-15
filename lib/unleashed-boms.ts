@@ -3,7 +3,7 @@ import { createHmac } from "crypto"
 const UNLEASHED_BASE = "https://api.unleashedsoftware.com"
 const PAGE_SIZE = 200
 const TTL_MS = 6 * 60 * 60 * 1000 // 6 hours
-const FETCH_TIMEOUT_MS = 15_000
+const FETCH_TIMEOUT_MS = 45_000
 
 interface UnleashedPagination {
   NumberOfPages?: number
@@ -35,6 +35,11 @@ async function fetchWithTimeout(
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     return await fetch(url, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Unleashed BOM request timed out after ${timeoutMs}ms`)
+    }
+    throw err
   } finally {
     clearTimeout(timeout)
   }

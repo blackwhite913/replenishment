@@ -6,7 +6,7 @@ import { signOut, useSession } from "next-auth/react"
 import {
   LayoutDashboard,
   TrendingUp,
-  Truck,
+  Package,
   LogOut,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -19,7 +19,12 @@ import {
 const navItems = [
   { icon: LayoutDashboard, label: "Inventory Risk", href: "/", pathMatch: "/" },
   { icon: TrendingUp, label: "Forecasting", href: "/forecasting", pathMatch: "/forecasting" },
-  { icon: Truck, label: "Transfers", href: "/", pathMatch: "/transfers" },
+  {
+    icon: Package,
+    label: "Inventory",
+    href: "/shopify-inventory",
+    pathMatch: "/shopify-inventory",
+  },
 ]
 
 function initialsFromUser(

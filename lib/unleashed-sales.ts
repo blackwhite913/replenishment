@@ -62,6 +62,9 @@ async function fetchWithTimeout(
     const res = await fetch(url, { ...init, signal: controller.signal })
     return res
   } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Unleashed sales request timed out after ${timeoutMs}ms`)
+    }
     throw err
   } finally {
     clearTimeout(timeout)
@@ -288,4 +291,23 @@ export async function getSalesTrend(forceRefresh = false): Promise<SalesTrendRes
     })
 
   return refreshPromise
+}
+
+/**
+ * Returns a lightweight per-SKU sales summary for dashboard use.
+ * Only includes total90Days and dailyAverage — no 90-day arrays.
+ * Reuses the existing getSalesTrend() cache internally.
+ */
+export async function getSalesSummaryBySku(
+  forceRefresh = false
+): Promise<Record<string, { total90Days: number; dailyAverage: number }>> {
+  const result = await getSalesTrend(forceRefresh)
+  const summary: Record<string, { total90Days: number; dailyAverage: number }> = {}
+  for (const [sku, data] of Object.entries(result.bySku ?? {})) {
+    summary[sku] = {
+      total90Days: data.total90Days,
+      dailyAverage: data.total90Days / 90,
+    }
+  }
+  return summary
 }

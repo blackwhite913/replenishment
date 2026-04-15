@@ -9,7 +9,7 @@ export interface SkuItem {
   dailySales: number
   daysCover: number
   reorderPoint: number
-  thirdPlStock: number
+  thirdPlStock: number | null
   status: SkuStatus
   isComponent?: boolean
   isUsedInBOM?: boolean

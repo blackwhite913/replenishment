@@ -210,7 +210,7 @@ export function RiskTable({ data, onRowClick, filterEmptyHint }: RiskTableProps)
                     {item.reorderPoint.toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-sm text-foreground">
-                    {item.thirdPlStock.toLocaleString()}
+                    {item.thirdPlStock === null ? "—" : item.thirdPlStock.toLocaleString()}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={item.status} />

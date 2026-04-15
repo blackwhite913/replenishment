@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
-import { LayoutDashboard, Menu, TrendingUp, Truck, LogOut } from "lucide-react"
+import { LayoutDashboard, Menu, TrendingUp, Package, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
@@ -11,7 +11,12 @@ import { cn } from "@/lib/utils"
 const navItems = [
   { icon: LayoutDashboard, label: "Inventory Risk", href: "/", pathMatch: "/" },
   { icon: TrendingUp, label: "Forecasting", href: "/forecasting", pathMatch: "/forecasting" },
-  { icon: Truck, label: "Stock on Hand", href: "/stock-on-hand", pathMatch: "/stock-on-hand" },
+  {
+    icon: Package,
+    label: "Inventory",
+    href: "/shopify-inventory",
+    pathMatch: "/shopify-inventory",
+  },
 ]
 
 function initialsFromUser(

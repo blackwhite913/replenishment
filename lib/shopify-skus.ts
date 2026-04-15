@@ -6,11 +6,13 @@ const SHOPIFY_CSV_PATH = join(process.cwd(), "data", "shopify-active-skus.csv")
 let cachedSet: Set<string> | null = null
 
 /**
- * Parses the Shopify Active Product CSV and returns a Set of SKU strings.
- * Uses exact string comparison - no normalization; spaces are preserved.
+ * Parses the Shopify Active Product CSV and returns a Set of normalized SKU strings.
+ * SKUs are trimmed and uppercased for consistent matching with Unleashed product codes.
  * Caches the result in module memory for subsequent calls.
  *
- * @returns Set of SKUs, or null if the file is missing or unreadable
+ * Used as a fallback when the live Shopify API is unavailable.
+ *
+ * @returns Set of normalized SKUs, or null if the file is missing or unreadable
  */
 export function getShopifySkuSet(): Set<string> | null {
   if (cachedSet !== null) {
@@ -24,9 +26,9 @@ export function getShopifySkuSet(): Set<string> | null {
 
     // Skip header row (line 0)
     for (let i = 1; i < lines.length; i++) {
-      const trimmed = lines[i].trim()
-      if (trimmed) {
-        skus.add(trimmed)
+      const normalized = lines[i].trim().toUpperCase()
+      if (normalized) {
+        skus.add(normalized)
       }
     }
 

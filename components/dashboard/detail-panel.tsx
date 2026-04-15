@@ -43,7 +43,7 @@ import {
   computeDaysCover,
   computeReorderPoint,
 } from "@/lib/forecasting"
-import type { BomDetail } from "@/lib/inventory-risk"
+import type { BomDetail } from "@/lib/build-dashboard"
 import { Spinner } from "@/components/ui/spinner"
 
 interface DetailPanelProps {
@@ -51,12 +51,8 @@ interface DetailPanelProps {
   onOpenChange: (open: boolean) => void
   selectedSku: SkuItem | null
   leadTime?: number
-  demandTrendOverrideBySku?: Record<
-    string,
-    { last90Days: { date: string; units: number }[]; total90Days: number }
-  >
-  demandTrendTitle?: string
-  bomVisibilityMap?: Map<string, BomDetail[]>
+  /** Plain object map from component SKU to BOM parent details. */
+  bomVisibilityMap?: Record<string, BomDetail[]>
 }
 
 const customTooltipStyle = {
@@ -78,8 +74,6 @@ export function DetailPanel({
   onOpenChange,
   selectedSku,
   leadTime = 3,
-  demandTrendOverrideBySku,
-  demandTrendTitle = "90-Day Demand Trend",
   bomVisibilityMap,
 }: DetailPanelProps) {
   const [skuSalesTrend, setSkuSalesTrend] = useState<{
@@ -89,19 +83,10 @@ export function DetailPanel({
   const [skuSalesLoading, setSkuSalesLoading] = useState(false)
   const [skuSalesError, setSkuSalesError] = useState(false)
 
+  // Fetch per-SKU 90-day trend on demand when the panel opens
   useEffect(() => {
     if (!open || !selectedSku?.sku) {
       setSkuSalesTrend(null)
-      return
-    }
-    const override = demandTrendOverrideBySku?.[selectedSku.sku]
-    if (override) {
-      setSkuSalesTrend({
-        last90Days: override.last90Days ?? [],
-        total90Days: override.total90Days ?? 0,
-      })
-      setSkuSalesError(false)
-      setSkuSalesLoading(false)
       return
     }
     setSkuSalesLoading(true)
@@ -117,11 +102,11 @@ export function DetailPanel({
       })
       .catch(() => setSkuSalesError(true))
       .finally(() => setSkuSalesLoading(false))
-  }, [open, selectedSku?.sku, demandTrendOverrideBySku])
+  }, [open, selectedSku?.sku])
 
   const bomDetails = useMemo(() => {
     if (!selectedSku?.sku || !bomVisibilityMap) return []
-    return bomVisibilityMap.get(selectedSku.sku) ?? []
+    return bomVisibilityMap[selectedSku.sku] ?? []
   }, [selectedSku?.sku, bomVisibilityMap])
 
   if (!selectedSku) return null
@@ -215,7 +200,7 @@ export function DetailPanel({
             <StatCard
               icon={Truck}
               label="3PL Stock"
-              value={selectedSku.thirdPlStock}
+              value={selectedSku.thirdPlStock ?? "—"}
               color="text-purple-400"
               bg="bg-purple-400/10"
             />
@@ -312,7 +297,7 @@ export function DetailPanel({
                           {bom.parentSku}
                         </TableCell>
                         <TableCell className="text-xs text-foreground max-w-[180px] truncate">
-                          {bom.parentName}
+                          {bom.parentDescription}
                         </TableCell>
                         <TableCell className="text-right">
                           <span className="rounded bg-violet-400/10 px-2 py-0.5 text-xs font-bold tabular-nums text-violet-400">
@@ -333,7 +318,7 @@ export function DetailPanel({
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-foreground">
-                {demandTrendTitle}
+                {"90-Day Sales Trend"}
               </h3>
               <span className="text-[10px] rounded-md bg-secondary px-2 py-0.5 text-muted-foreground font-medium">
                 {skuSalesTrend ? `${skuSalesTrend.total90Days} units (90 days)` : "Last 90 days"}

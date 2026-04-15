@@ -4,7 +4,7 @@ const UNLEASHED_BASE = "https://api.unleashedsoftware.com"
 const PAGE_SIZE = 1000
 const TTL_MS = 6 * 60 * 60 * 1000 // 6 hours
 const DAYS_RANGE = 90
-const FETCH_TIMEOUT_MS = 15_000
+const FETCH_TIMEOUT_MS = 45_000
 
 interface UnleashedPagination {
   NumberOfPages?: number
@@ -64,6 +64,9 @@ async function fetchWithTimeout(
     const res = await fetch(url, { ...init, signal: controller.signal })
     return res
   } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Unleashed assemblies request timed out after ${timeoutMs}ms`)
+    }
     throw err
   } finally {
     clearTimeout(timeout)

@@ -1,6 +1,5 @@
 "use client"
 
-import Link from "next/link"
 import { Package, AlertTriangle, Eye, Warehouse, Info } from "lucide-react"
 import type { SkuItem } from "@/lib/placeholder-data"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -10,9 +9,18 @@ const SPARKLINE_HEIGHTS = [40, 65, 30, 80, 55, 70, 45, 90, 60, 35, 75, 50]
 interface KpiCardsProps {
   data: SkuItem[]
   totalSkuCount?: number
+  provisional?: boolean
+  threePlAvailable?: boolean
+  onCardClick?: (cardKey: "atRisk" | "monitoring" | "threePl") => void
 }
 
-export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
+export function KpiCards({
+  data,
+  totalSkuCount,
+  provisional = false,
+  threePlAvailable = true,
+  onCardClick,
+}: KpiCardsProps) {
   const totalSkus = totalSkuCount ?? data.length
   const atRisk = data.filter((d) => d.status === "oosRisk").length
   const monitoring = data.filter((d) => d.status === "monitoring").length
@@ -20,6 +28,7 @@ export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
 
   const cards = [
     {
+      key: null as null,
       label: "Analyzed SKUs",
       value: totalSkus.toLocaleString(),
       subtitle: "Excludes BOM parent SKUs (assemblies)",
@@ -29,33 +38,42 @@ export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
       accentColor: "from-emerald-500/20 to-emerald-500/5",
       iconColor: "text-emerald-400",
       borderAccent: "border-l-emerald-500",
+      clickable: false,
     },
     {
+      key: "atRisk" as const,
       label: "SKUs at Risk",
       value: atRisk.toLocaleString(),
+      valueHint: provisional ? "provisional" : null,
       subtitle: undefined as string | undefined,
       icon: AlertTriangle,
       accentColor: "from-red-500/20 to-red-500/5",
       iconColor: "text-red-400",
       borderAccent: "border-l-red-500",
+      clickable: true,
     },
     {
+      key: "monitoring" as const,
       label: "Monitoring",
       value: monitoring.toLocaleString(),
+      valueHint: provisional ? "provisional" : null,
       subtitle: undefined as string | undefined,
       icon: Eye,
       accentColor: "from-amber-500/20 to-amber-500/5",
       iconColor: "text-amber-400",
       borderAccent: "border-l-amber-500",
+      clickable: true,
     },
     {
+      key: "threePl" as const,
       label: "3PL Stock",
-      value: totalThreePlStock.toLocaleString(),
+      value: threePlAvailable ? totalThreePlStock.toLocaleString() : "Unavailable",
       subtitle: undefined as string | undefined,
       icon: Warehouse,
       accentColor: "from-blue-500/20 to-blue-500/5",
       iconColor: "text-blue-400",
       borderAccent: "border-l-blue-500",
+      clickable: threePlAvailable,
     },
   ]
 
@@ -89,9 +107,19 @@ export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
                 <p className="text-2xl font-bold tracking-tight text-foreground">
                   {card.value}
                 </p>
+                {"valueHint" in card && card.valueHint && (
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                    {card.valueHint}
+                  </p>
+                )}
                 {card.label === "Analyzed SKUs" && card.subtitle && (
                   <p className="text-[10px] text-muted-foreground/70 mt-0.5">
                     {card.subtitle}
+                  </p>
+                )}
+                {card.clickable && onCardClick && (
+                  <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                    Click to filter
                   </p>
                 )}
               </div>
@@ -113,17 +141,25 @@ export function KpiCards({ data, totalSkuCount }: KpiCardsProps) {
           </>
         )
 
-        const cardClassName = `group relative overflow-hidden rounded-xl border border-border bg-card p-4 border-l-[3px] ${card.borderAccent} transition-all hover:border-border/80 hover:shadow-lg hover:shadow-black/20`
+        const baseClassName = `group relative overflow-hidden rounded-xl border border-border bg-card p-4 border-l-[3px] ${card.borderAccent} transition-all hover:border-border/80 hover:shadow-lg hover:shadow-black/20`
+
+        if (card.clickable && card.key && onCardClick) {
+          return (
+            <div key={card.label}>
+              <button
+                type="button"
+                className={`${baseClassName} w-full text-left cursor-pointer`}
+                onClick={() => onCardClick(card.key!)}
+              >
+                {cardContent}
+              </button>
+            </div>
+          )
+        }
 
         return (
           <div key={card.label}>
-            {card.label === "3PL Stock" ? (
-              <Link href="/stock-on-hand" className="block">
-                <div className={cardClassName}>{cardContent}</div>
-              </Link>
-            ) : (
-              <div className={cardClassName}>{cardContent}</div>
-            )}
+            <div className={baseClassName}>{cardContent}</div>
           </div>
         )
       })}
